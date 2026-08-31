@@ -1,0 +1,25 @@
+# Normalise line endings so a Windows checkout does not show every file
+# as modified on a Mac, and vice versa.
+* text=auto eol=lf
+
+# Binaries — never touch
+*.png    binary
+*.jpg    binary
+*.jpeg   binary
+*.gif    binary
+*.ico    binary
+*.webp   binary
+*.pdf    binary
+*.ttf    binary
+*.otf    binary
+*.woff   binary
+*.woff2  binary
+*.jar    binary
+*.keystore binary
+
+# Windows-only scripts must keep CRLF
+*.bat    text eol=crlf
+*.cmd    text eol=crlf
+
+# Shell scripts must keep LF even on Windows
+*.sh     text eol=lf
