@@ -2,6 +2,12 @@
 
     <uses-permission android:name="android.permission.INTERNET" />
 
+    <!-- The map's blue dot, and reporting the truck's position. COARSE is
+         declared alongside FINE because Android 12+ lets the driver grant only
+         the approximate one, and the app has to keep working if they do. -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+
     <application
       android:name=".MainApplication"
       android:label="@string/app_name"
@@ -11,6 +17,11 @@
       android:theme="@style/AppTheme"
       android:usesCleartextTraffic="${usesCleartextTraffic}"
       android:supportsRtl="true">
+      <!-- react-native-maps uses Google Maps on Android. iOS falls back to
+           Apple Maps, which needs no key at all. -->
+      <meta-data
+        android:name="com.google.android.geo.API_KEY"
+        android:value="AIzaSyBEQp-ZFMYZjsTNyximu2pAifQ9EWA4W3M" />
       <activity
         android:name=".MainActivity"
         android:label="@string/app_name"
