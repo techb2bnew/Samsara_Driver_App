@@ -11,6 +11,7 @@ import {
   cardBg,
   dutyDrivingColor,
   dutyOnDutyColor,
+  warnColor,
   okSoft,
   shadowColor,
   textDark,
@@ -27,12 +28,16 @@ const ICON: Record<DriverNotification['kind'], string> = {
   message: icons.messages,
   route: icons.route,
   vehicle: icons.truck,
+  break: icons.warning,
 };
 
 const TONE: Record<DriverNotification['kind'], { color: string; wash: string }> = {
   message: { color: accentColor, wash: accentSoft },
   route: { color: dutyDrivingColor, wash: okSoft },
   vehicle: { color: dutyOnDutyColor, wash: warnSoft },
+  // Amber, like the hours warnings elsewhere. A break reminder is the only
+  // kind here the driver has to act on within the hour.
+  break: { color: warnColor, wash: warnSoft },
 };
 
 /** "14:35" — anything older than today is rare enough to read in full. */

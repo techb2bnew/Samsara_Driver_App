@@ -25,7 +25,17 @@ import { useAuth } from './AuthContext';
  */
 
 type ShiftValue = {
+  /** The first load, when there is nothing on screen yet. */
   loading: boolean;
+  /**
+   * A refresh the driver asked for, by pulling the list down.
+   *
+   * Separate from `loading` because the screens wired one flag to both the
+   * inline spinner and the pull-to-refresh control, so opening the Duty tab
+   * span two spinners at once — the control at the top as though it had been
+   * pulled, and the indicator in the middle.
+   */
+  refreshing: boolean;
   error: string | null;
   /** The truck signed on to, or null before one is picked. */
   vehicle: { assignmentId: string; vehicleId: string; name: string; plate: string } | null;
@@ -37,7 +47,10 @@ type ShiftValue = {
   certifiedDates: ReadonlySet<string>;
   /** How far back the loaded events reach. Earlier days would draw empty. */
   earliestDate: string;
+  /** Quiet: updates the rows without showing anything. */
   refresh: () => Promise<void>;
+  /** Pull-to-refresh: drives the control's own spinner. */
+  refreshVisibly: () => Promise<void>;
   signOnToVehicle: (vehicleId: string) => Promise<void>;
   changeStatus: (status: DutyStatus) => Promise<void>;
   certifyDay: (date: string) => Promise<void>;
@@ -59,6 +72,7 @@ export function ShiftProvider({ children }: { children: React.ReactNode }) {
   const profile = state.status === 'signedIn' ? state.profile : null;
 
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [vehicle, setVehicle] = useState<ShiftValue['vehicle']>(null);
   const [route, setRoute] = useState<AssignedRoute | null>(null);
@@ -103,8 +117,15 @@ export function ShiftProvider({ children }: { children: React.ReactNode }) {
       setError(err instanceof Error ? err.message : 'Could not load your shift.');
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   }, [profile]);
+
+  /* The same load, with the pull-to-refresh spinner while it runs. */
+  const refreshVisibly = useCallback(async () => {
+    setRefreshing(true);
+    await refresh();
+  }, [refresh]);
 
   useEffect(() => {
     refresh();
@@ -156,6 +177,7 @@ export function ShiftProvider({ children }: { children: React.ReactNode }) {
   const value = useMemo<ShiftValue>(
     () => ({
       loading,
+      refreshing,
       error,
       vehicle,
       route,
@@ -163,6 +185,7 @@ export function ShiftProvider({ children }: { children: React.ReactNode }) {
       certifiedDates,
       earliestDate,
       refresh,
+      refreshVisibly,
 
       signOnToVehicle: async (vehicleId: string) => {
         if (!profile) throw new Error('Not signed in.');
@@ -229,7 +252,19 @@ export function ShiftProvider({ children }: { children: React.ReactNode }) {
         setCertifiedDates(current => new Set([...current, date]));
       },
     }),
-    [loading, error, vehicle, route, events, certifiedDates, earliestDate, refresh, profile],
+    [
+      loading,
+      refreshing,
+      error,
+      vehicle,
+      route,
+      events,
+      certifiedDates,
+      earliestDate,
+      refresh,
+      refreshVisibly,
+      profile,
+    ],
   );
 
   return <ShiftContext.Provider value={value}>{children}</ShiftContext.Provider>;

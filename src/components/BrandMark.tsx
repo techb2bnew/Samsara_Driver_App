@@ -2,7 +2,14 @@ import React from 'react';
 import { StyleSheet, View } from 'react-native';
 import { AppIcon } from './AppIcon';
 import { BaseStyle } from '../constans/Style';
-import { accentColor, accentSoft } from '../constans/Color';
+import {
+  accentColor,
+  accentSoft,
+  brandWashDeep,
+  brandWashFaint,
+  brandWashSoft,
+  brandWashStrong,
+} from '../constans/Color';
 import { widthPercentageToDP as wp } from '../utils';
 
 /**
@@ -34,7 +41,7 @@ export function BrandMark({
             width: glow,
             height: glow,
             borderRadius: glow / 2,
-            backgroundColor: dark ? 'rgba(233,69,69,0.10)' : 'rgba(233,69,69,0.08)',
+            backgroundColor: dark ? brandWashSoft : brandWashFaint,
           },
         ]}
       />
@@ -47,7 +54,7 @@ export function BrandMark({
             borderRadius: ring / 2,
             top: (glow - ring) / 2,
             left: (glow - ring) / 2,
-            backgroundColor: dark ? 'rgba(233,69,69,0.18)' : accentSoft,
+            backgroundColor: dark ? brandWashStrong : accentSoft,
           },
         ]}
       />
@@ -58,7 +65,7 @@ export function BrandMark({
             width: core,
             height: core,
             borderRadius: core / 2,
-            backgroundColor: dark ? 'rgba(233,69,69,0.28)' : accentSoft,
+            backgroundColor: dark ? brandWashDeep : accentSoft,
           },
         ]}>
         <AppIcon name={icon} size={core * 0.38} color={accentColor} />

@@ -275,6 +275,16 @@ export const repairs = {
   titleRequired: 'Say what needs doing',
   raiseFailed: 'That was not sent.',
   noVehicle: 'Pick a truck before you ask for a repair',
+
+  // Taking one back
+  cancel: 'Take this back',
+  cancelConfirm: 'Take back this request?',
+  cancelHint: 'The workshop stops seeing it. You can ask again any time.',
+  cancelToast: 'Request taken back',
+  cancelFailed: 'That could not be taken back — the workshop may have already started it.',
+  // Only their own, and only before anyone picks it up. Said on the row so a
+  // driver is not hunting for a button that is not there.
+  cancelOnlyOpen: 'The workshop has this now',
 };
 
 export const dayLog = {
@@ -364,17 +374,145 @@ export const correction = {
   sentToast: 'Request sent',
   reasonRequired: 'Say why — the office needs a reason to accept it',
   failed: 'That request was not sent.',
+  pickTitle: 'Which entry is wrong?',
+  pickHint: 'Pick the one that was recorded incorrectly.',
+  pickEmpty: 'Nothing recorded yet',
+  pickEmptyHint: 'Once your log has entries you can ask for a correction here.',
+  pickAt: (day, time) => `${day} · from ${time}`,
   alreadyPending: 'You have already asked about this one. The office has not decided yet.',
   wasRejected: 'The office refused your last request on this row. You can ask again with more detail.',
 };
 
+export const myLogs = {
+  subtitle: 'Every day this phone has loaded, and whether you signed it',
+  empty: 'No days recorded yet',
+  emptyHint: 'Set your duty status and the day starts recording.',
+  certified: 'Signed',
+  uncertified: 'Not signed',
+  noEvents: 'Nothing recorded',
+  hours: (driving, onDuty) => `${driving} driving · ${onDuty} on duty`,
+  window: (n) => `Last ${n} days`,
+  // The window is what the phone holds, not what exists. Saying so stops a
+  // driver reading an empty older day as lost data.
+  olderHint: 'Older days are not loaded on this phone. Ask the office for them.',
+};
+
+export const myInspections = {
+  subtitle: 'Inspections you have filed',
+  empty: 'No inspections yet',
+  // Deliberately not "fill in a form from the Inspect tab": the console's form
+  // builder is switched off, so there is no form to fill in and that hint sent
+  // drivers looking for a screen that is not there.
+  emptyHint: 'Inspections you file appear here, with what the office made of them.',
+  status: {
+    submitted: 'Sent',
+    reviewed: 'Reviewed by the office',
+    flagged: 'Flagged by the office',
+  },
+};
+
+export const myFaults = {
+  subtitle: 'Faults you have reported',
+  empty: 'No faults reported',
+  emptyHint: 'Anything you report from the Inspect tab appears here with its status.',
+  status: {
+    open: 'Open',
+    in_repair: 'Being fixed',
+    resolved: 'Fixed',
+    dismissed: 'Closed without work',
+  },
+  severity: {
+    minor: 'Minor',
+    major: 'Major',
+    out_of_service: 'Unsafe to drive',
+  },
+  hasWorkOrder: 'A repair job was raised',
+};
+
+export const myDocuments = {
+  subtitle: 'Your paperwork, and the truck’s',
+  empty: 'No documents',
+  emptyHint: 'Your fleet office files your licence and medical here.',
+  expires: (date) => `Expires ${date}`,
+  expired: 'Expired',
+  expiringSoon: (days) => `Expires in ${days} ${days === 1 ? 'day' : 'days'}`,
+  noExpiry: 'No expiry date',
+  open: 'Open',
+  openFailed: 'That file could not be opened.',
+  category: {
+    compliance: 'Compliance',
+    trip: 'Trip paperwork',
+    vehicle: 'Vehicle',
+  },
+};
+
+export const paperwork = {
+  title: 'Add paperwork',
+  subtitle: 'Photograph a delivery note, a receipt or a fuel docket',
+  // The office files licences and medicals. A driver reads those, never writes
+  // them — so nothing here offers to.
+  tripOnly: 'Your licence and medical are filed by the office. This is for paperwork from the job.',
+
+  take: 'Take a photo',
+  choose: 'Choose from photos',
+  retake: 'Take another',
+  unavailable: 'Photos are not available in this build. Ask for the app to be updated.',
+  failed: 'That photo could not be used.',
+
+  kind: 'What is it',
+  types: {
+    proof_of_delivery: 'Proof of delivery',
+    bill_of_lading: 'Bill of lading',
+    receipt: 'Receipt',
+    fuel_docket: 'Fuel docket',
+    other: 'Something else',
+  },
+  label: 'A note for the office',
+  labelPlaceholder: 'Signed by the storeman at gate 2',
+  labelHint: 'Optional. Helps the office find it later.',
+
+  send: 'Send to the office',
+  sentToast: 'Paperwork sent',
+  sendFailed: 'That could not be sent.',
+  needPhoto: 'Take or choose a photo first',
+  noVehicle: 'Pick a truck first, so the office knows which one this is for',
+
+  // On the stop
+  atStop: 'Add paperwork for this stop',
+};
+
+export const settings = {
+  subtitle: 'How this app behaves for you',
+  units: 'Distance',
+  unitsKm: 'Kilometres',
+  unitsMi: 'Miles',
+  notifications: 'Notifications',
+  notifyPush: 'Push notifications',
+  notifyPushHint: 'Not switched on yet — the office has to set this up first.',
+  notifyEmail: 'Email me too',
+  notifyBreak: 'Remind me to take a break',
+  notifyBreakHint: 'Warns you before you run out of driving time.',
+  account: 'Account',
+  savedToast: 'Saved',
+  failed: 'That could not be saved.',
+  loadFailed: 'Your settings could not be loaded.',
+};
+
 export const violations = {
   title: 'Violations',
+  subtitle: 'Worked out from your log, not stored anywhere',
   empty: 'No violations',
   emptyHint: 'Nothing has broken the hours rules.',
+  noRegulator: 'Your office has not chosen a rule book, so nothing can be checked.',
   limit: 'Limit',
   actual: 'Recorded',
   over: 'Over by',
+  kind: {
+    daily_driving: 'Drove too long in a day',
+    duty_window: 'On-duty window exceeded',
+    missing_break: 'Drove too long without a break',
+    cycle: 'Cycle limit exceeded',
+  },
 };
 
 export const modal = {
@@ -480,6 +618,7 @@ export const screenTitles = {
   myFaults: 'My fault reports',
   myViolations: 'My violations',
   myDocuments: 'My documents',
+  addPaperwork: 'Add paperwork',
   training: 'Training',
   requestCorrection: 'Log correction',
   settings: 'Settings',
@@ -502,5 +641,11 @@ export const notifications = {
   vehicleChangedBody: (name) => `You are now signed on to ${name}.`,
   vehicleCleared: 'Truck removed',
   vehicleClearedBody: 'You are not signed on to a truck. Pick one before you go on duty.',
+  breakDue: 'Break due soon',
+  breakDueBody: (minutes, length) =>
+    `About ${minutes} minutes of driving left before you need a ${length}-minute break.`,
+  breakOverdue: 'Break needed now',
+  breakOverdueBody: (length) =>
+    `You have driven past the limit without a ${length}-minute break.`,
 };
 

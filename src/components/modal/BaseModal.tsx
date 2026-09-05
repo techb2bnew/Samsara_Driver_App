@@ -8,7 +8,11 @@ import {
 } from 'react-native';
 import { BaseStyle } from '../../constans/Style';
 import { spacings } from '../../constans/Fonts';
-import { cardBg, shadowColor } from '../../constans/Color';
+import {
+  cardBg,
+  scrim,
+  shadowColor,
+} from '../../constans/Color';
 import { widthPercentageToDP as wp } from '../../utils';
 
 /**
@@ -84,7 +88,7 @@ export function BaseModal({
 
 const styles = StyleSheet.create({
   backdrop: {
-    backgroundColor: 'rgba(15,20,30,0.45)',
+    backgroundColor: scrim,
     paddingHorizontal: spacings.xxLarge,
   },
   card: {

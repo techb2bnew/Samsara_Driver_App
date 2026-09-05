@@ -11,6 +11,7 @@ import { auth as authText, common, me as meText, SPLASH_MS } from '../constans/C
 import { heightPercentageToDP as hp } from '../utils';
 import { useAuth } from '../context/AuthContext';
 import { ShiftProvider } from '../context/ShiftContext';
+import { SettingsProvider } from '../context/SettingsContext';
 import { NotificationProvider } from '../context/NotificationContext';
 import { OnboardingScreen } from '../screens/onboarding/OnboardingScreen';
 import { SplashScreen } from '../screens/SplashScreen';
@@ -59,7 +60,9 @@ export function RootNavigator() {
   if (state.status === 'signedIn') {
     return (
       <ShiftProvider>
-        <NotificationProvider>
+        {/* Settings above Notification: the break reminder obeys them. */}
+        <SettingsProvider>
+          <NotificationProvider>
           {splashHeld ? (
             <SplashScreen />
           ) : (
@@ -67,7 +70,8 @@ export function RootNavigator() {
               <TabNavigator />
             </NavigationContainer>
           )}
-        </NotificationProvider>
+          </NotificationProvider>
+        </SettingsProvider>
       </ShiftProvider>
     );
   }

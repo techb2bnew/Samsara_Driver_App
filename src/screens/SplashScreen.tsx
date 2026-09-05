@@ -5,7 +5,15 @@ import { BrandMark } from '../components/BrandMark';
 import { icons } from '../components/AppIcon';
 import { BaseStyle } from '../constans/Style';
 import { spacings, style as fontStyle } from '../constans/Fonts';
-import { accentColor, onAccent, splashBgColor } from '../constans/Color';
+import {
+  accentColor,
+  brandWashMid,
+  brandWashSoft,
+  lightWash,
+  onAccent,
+  splashBgColor,
+  splashText,
+} from '../constans/Color';
 import { APP_NAME, splash as t } from '../constans/Constants';
 import { heightPercentageToDP as hp, widthPercentageToDP as wp } from '../utils';
 
@@ -139,7 +147,7 @@ const styles = StyleSheet.create({
     width: wp(70),
     height: wp(70),
     borderRadius: wp(35),
-    backgroundColor: 'rgba(233,69,69,0.14)',
+    backgroundColor: brandWashMid,
     top: -wp(16),
     right: -wp(20),
   },
@@ -148,7 +156,7 @@ const styles = StyleSheet.create({
     width: wp(48),
     height: wp(48),
     borderRadius: wp(24),
-    backgroundColor: 'rgba(233,69,69,0.10)',
+    backgroundColor: brandWashSoft,
     bottom: hp(12),
     left: -wp(16),
   },
@@ -163,7 +171,7 @@ const styles = StyleSheet.create({
   },
   name: { color: onAccent, letterSpacing: 0.2, textAlign: 'center' },
   tagline: {
-    color: 'rgba(255,247,247,0.62)',
+    color: splashText,
     marginTop: spacings.normalx,
     textAlign: 'center',
     paddingHorizontal: spacings.xxLarge,
@@ -173,7 +181,7 @@ const styles = StyleSheet.create({
     width: wp(28),
     height: 4,
     borderRadius: 2,
-    backgroundColor: 'rgba(255,255,255,0.12)',
+    backgroundColor: lightWash,
     overflow: 'hidden',
   },
   thumb: {

@@ -2,10 +2,12 @@ import React from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { MeHomeScreen } from '../screens/me/MeHomeScreen';
 import { MyLogsScreen } from '../screens/me/MyLogsScreen';
+import { DayLogScreen } from '../screens/duty/DayLogScreen';
 import { MyInspectionsScreen } from '../screens/me/MyInspectionsScreen';
 import { MyFaultsScreen } from '../screens/me/MyFaultsScreen';
 import { MyViolationsScreen } from '../screens/me/MyViolationsScreen';
 import { MyDocumentsScreen } from '../screens/me/MyDocumentsScreen';
+import { AddPaperworkScreen } from '../screens/me/AddPaperworkScreen';
 import { TrainingScreen } from '../screens/me/TrainingScreen';
 import { CourseScreen } from '../screens/me/CourseScreen';
 import { RequestCorrectionScreen } from '../screens/me/RequestCorrectionScreen';
@@ -34,6 +36,11 @@ export function MeStack() {
         options={{ title: screenTitles.myLogs }}
       />
       <Stack.Screen
+        name="DayLog"
+        component={DayLogScreen}
+        options={{ title: screenTitles.dayLog }}
+      />
+      <Stack.Screen
         name="MyInspections"
         component={MyInspectionsScreen}
         options={{ title: screenTitles.myInspections }}
@@ -52,6 +59,11 @@ export function MeStack() {
         name="MyDocuments"
         component={MyDocumentsScreen}
         options={{ title: screenTitles.myDocuments }}
+      />
+      <Stack.Screen
+        name="AddPaperwork"
+        component={AddPaperworkScreen}
+        options={{ title: screenTitles.addPaperwork, presentation: 'modal' }}
       />
       <Stack.Screen
         name="Training"

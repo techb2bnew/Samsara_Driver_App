@@ -5,7 +5,15 @@ import { CustomButton, StepDots, icons } from '../../components';
 import { OnboardingArt } from './OnboardingArt';
 import { BaseStyle } from '../../constans/Style';
 import { spacings, style as fontStyle } from '../../constans/Fonts';
-import { accentColor, appBg, cardBg, textBody, textDark, textMuted } from '../../constans/Color';
+import {
+  accentColor,
+  appBg,
+  cardBg,
+  shadowColor,
+  textBody,
+  textDark,
+  textMuted,
+} from '../../constans/Color';
 import { onboarding } from '../../constans/Constants';
 import { heightPercentageToDP as hp, widthPercentageToDP as wp } from '../../utils';
 import { useAuth } from '../../context/AuthContext';
@@ -148,7 +156,7 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 28,
     paddingHorizontal: spacings.xxLarge,
     paddingTop: spacings.xxxLarge,
-    shadowColor: '#0B1220',
+    shadowColor,
     shadowOpacity: 0.08,
     shadowRadius: 18,
     shadowOffset: { width: 0, height: -6 },

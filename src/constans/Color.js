@@ -110,3 +110,23 @@ export const placeholderColor = '#A2A9B6';
 // of the danger colour. Both were inline hex in CustomTextInput.
 export const inputFocusBg = '#FFFFFF';
 export const inputErrorBg = '#FFF7F6';
+
+// ---------------------------------------------------------------------------
+// Translucent washes
+// ---------------------------------------------------------------------------
+// Alpha values, so they sit over whatever is behind them. They were written
+// inline as rgba() in six files, which is the one thing the house style bans:
+// a theme change had six places to find and nobody would find all six.
+export const brandWashFaint = 'rgba(233,69,69,0.08)';
+export const brandWashSoft = 'rgba(233,69,69,0.10)';
+export const brandWashMid = 'rgba(233,69,69,0.14)';
+export const brandWashStrong = 'rgba(233,69,69,0.18)';
+export const brandWashDeep = 'rgba(233,69,69,0.28)';
+
+/** On a dark ground: a splash panel, a pressed tile. */
+export const lightWash = 'rgba(255,255,255,0.12)';
+/** The wash over a selected duty tile, which already carries its own colour. */
+export const selectedWash = 'rgba(255,255,255,0.2)';
+export const splashText = 'rgba(255,247,247,0.62)';
+/** Behind a modal. Cool rather than black, so the card below reads as lifted. */
+export const scrim = 'rgba(15,20,30,0.45)';

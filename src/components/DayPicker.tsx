@@ -6,6 +6,7 @@ import { spacings, style as fontStyle } from '../constans/Fonts';
 import {
   accentColor,
   cardBg,
+  shadowColor,
   textDark,
   textFaint,
 } from '../constans/Color';
@@ -144,7 +145,7 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     paddingVertical: spacings.normalx,
     paddingHorizontal: spacings.normalx,
-    shadowColor: '#0B1220',
+    shadowColor,
     shadowOpacity: 0.06,
     shadowRadius: 12,
     shadowOffset: { width: 0, height: 4 },

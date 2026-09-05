@@ -30,6 +30,7 @@ import {
   okColor,
   okSoft,
   onAccent,
+  selectedWash,
   shadowColor,
   textDark,
   textFaint,
@@ -52,6 +53,7 @@ import {
 import { cycleDaysFor, recapFor, regulatorFrom } from '../../helpers/hosLimits';
 import { useAuth } from '../../context/AuthContext';
 import { useNotifications } from '../../context/NotificationContext';
+import { displayName } from '../../helpers/names';
 import { useNow } from '../../hooks/useNow';
 import type { DutyStatus } from '../../supabase/api';
 import type { DutyStackParams, TabParams } from '../../navigation/types';
@@ -89,13 +91,13 @@ export function DutyHomeScreen({ navigation }: Props) {
   const { state } = useAuth();
   const profile = state.status === 'signedIn' ? state.profile : null;
   const {
-    loading,
+    refreshing,
     error,
     vehicle,
     events,
     certifiedDates,
     earliestDate,
-    refresh,
+    refreshVisibly,
     changeStatus,
     certifyDay,
   } = useShift();
@@ -220,7 +222,13 @@ export function DutyHomeScreen({ navigation }: Props) {
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
         refreshControl={
-          <RefreshControl refreshing={loading} onRefresh={refresh} tintColor={accentColor} />
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => {
+              refreshVisibly().catch(() => {});
+            }}
+            tintColor={accentColor}
+          />
         }>
         <View
           style={[
@@ -232,7 +240,7 @@ export function DutyHomeScreen({ navigation }: Props) {
           <View>
             <Text style={[fontStyle.fontSizeSmall2x, styles.eyebrow]}>{t.title.toUpperCase()}</Text>
             <Text style={[fontStyle.fontSizeLargeX, fontStyle.fontWeightMedium1x, styles.greeting]}>
-              {profile ? t.hello(profile.firstName) : ''}
+              {profile ? t.hello(displayName(profile.firstName)) : ''}
             </Text>
           </View>
 
@@ -342,7 +350,7 @@ export function DutyHomeScreen({ navigation }: Props) {
                   style={[
                     BaseStyle.alignJustifyCenter,
                     styles.choiceIcon,
-                    { backgroundColor: active ? 'rgba(255,255,255,0.2)' : `${choice.color}22` },
+                    { backgroundColor: active ? selectedWash : `${choice.color}22` },
                   ]}>
                   <AppIcon name={choice.icon} size={20} color={active ? onAccent : choice.color} />
                 </View>

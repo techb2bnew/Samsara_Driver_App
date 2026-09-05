@@ -1,4 +1,4 @@
-import React, { useCallback } from 'react';
+import React, { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
   RefreshControl,
@@ -9,7 +9,15 @@ import {
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { AppIcon, Badge, Card, EmptyState, ListRow, icons } from '../../components';
+import {
+  AppIcon,
+  Badge,
+  Card,
+  ConfirmModal,
+  EmptyState,
+  ListRow,
+  icons,
+} from '../../components';
 import { BaseStyle } from '../../constans/Style';
 import { spacings, style as fontStyle } from '../../constans/Fonts';
 import {
@@ -65,14 +73,16 @@ export function MyRepairsScreen({}: Props) {
   const driverId = state.status === 'signedIn' ? state.profile.driverId : null;
   const { vehicle } = useShift();
 
-  const { data, loading, error, reload } = useAsync(
+  const { data, loading, refreshing, error, reload, reloadQuietly } = useAsync(
     () => (driverId ? api.loadMyWorkOrders(driverId) : Promise.resolve([])),
     [driverId],
   );
 
   useFocusEffect(
     useCallback(() => {
-      reload();
+      // Quiet: coming back to a tab should update the rows, not flash a
+      // spinner over rows that are already correct.
+      reloadQuietly();
       // reload is rebuilt every render; depending on it would loop.
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [driverId]),
@@ -91,12 +101,38 @@ export function MyRepairsScreen({}: Props) {
     }, [driverId]),
   );
 
+  const [cancelling, setCancelling] = useState<api.MyWorkOrder | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [failure, setFailure] = useState<string | null>(null);
+
+  async function takeBack() {
+    if (!cancelling) return;
+    setSaving(true);
+    setFailure(null);
+    try {
+      await api.cancelMyWorkOrder(cancelling.id);
+      setCancelling(null);
+      reload();
+    } catch (cause) {
+      setCancelling(null);
+      setFailure(cause instanceof Error ? cause.message : t.cancelFailed);
+    } finally {
+      setSaving(false);
+    }
+  }
+
   const orders = (data ?? []).filter(w => !vehicle || w.vehicleId === vehicle.vehicleId);
   const open = orders.filter(w => w.status !== 'completed' && w.status !== 'cancelled');
   const closed = orders.filter(w => w.status === 'completed' || w.status === 'cancelled');
 
   function row(order: api.MyWorkOrder, last: boolean) {
     const tone = TONE[order.status];
+    /*
+      Only their own, and only before the workshop picks it up. Tapping a row
+      that cannot be taken back does nothing rather than opening a dialog that
+      then refuses — the row says why instead.
+    */
+    const canTakeBack = order.mine && order.status === 'open';
     return (
       <ListRow
         key={order.id}
@@ -108,8 +144,15 @@ export function MyRepairsScreen({}: Props) {
             ? t.doneOn(shortDate(order.completedAt))
             : t.raisedOn(shortDate(order.openedAt))
         }
-        extra={order.mine ? t.mine : undefined}
+        extra={
+          order.mine
+            ? canTakeBack
+              ? t.mine
+              : `${t.mine} · ${t.cancelOnlyOpen}`
+            : undefined
+        }
         trailing={<Badge label={t[order.status]} color={tone.color} background={tone.background} />}
+        onPress={canTakeBack ? () => setCancelling(order) : undefined}
         last={last}
       />
     );
@@ -121,13 +164,20 @@ export function MyRepairsScreen({}: Props) {
         contentContainerStyle={styles.body}
         showsVerticalScrollIndicator={false}
         refreshControl={
-          <RefreshControl refreshing={loading} onRefresh={reload} tintColor={accentColor} />
+          <RefreshControl refreshing={refreshing} onRefresh={reload} tintColor={accentColor} />
         }>
         <Text style={[fontStyle.fontSizeSmall2x, styles.subtitle]}>
           {vehicle ? vehicle.name : t.subtitle}
         </Text>
 
-        {Boolean(error) && (
+        {Boolean(failure) && (
+          <View style={[BaseStyle.flexDirectionRow, BaseStyle.alignItemsCenter, styles.error]}>
+            <AppIcon name={icons.alert} size={17} color={dangerColor} />
+            <Text style={[fontStyle.fontSizeSmall2x, styles.errorText]}>{failure}</Text>
+          </View>
+        )}
+
+        {Boolean(error) && orders.length > 0 && (
           <View style={[BaseStyle.flexDirectionRow, BaseStyle.alignItemsCenter, styles.error]}>
             <AppIcon name={icons.alert} size={17} color={dangerColor} />
             <Text style={[fontStyle.fontSizeSmall2x, styles.errorText]}>{error}</Text>
@@ -138,14 +188,21 @@ export function MyRepairsScreen({}: Props) {
           <View style={styles.loading}>
             <ActivityIndicator color={accentColor} />
           </View>
-        ) : orders.length === 0 ? (
+        ) : error ? (
+          /*
+            The load failed and there is nothing to show. Showing "no repairs"
+            here would tell the driver their truck is clear when the truth is
+            that we could not find out.
+          */
           <EmptyState
-            icon={icons.truck}
-            title={t.empty}
-            hint={t.emptyHint}
+            icon={icons.alert}
+            title={error}
+            hint={common.noNetwork}
             actionLabel={common.retry}
             onAction={reload}
           />
+        ) : orders.length === 0 ? (
+          <EmptyState icon={icons.truck} title={t.empty} hint={t.emptyHint} />
         ) : (
           <>
             {open.length > 0 && (
@@ -170,6 +227,20 @@ export function MyRepairsScreen({}: Props) {
           </>
         )}
       </ScrollView>
+
+      <ConfirmModal
+        visible={cancelling !== null}
+        title={t.cancelConfirm}
+        message={t.cancelHint}
+        confirmLabel={t.cancel}
+        icon={icons.close}
+        tone="danger"
+        loading={saving}
+        onConfirm={() => {
+          takeBack().catch(() => {});
+        }}
+        onCancel={() => setCancelling(null)}
+      />
     </View>
   );
 }

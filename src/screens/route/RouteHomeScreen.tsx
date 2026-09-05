@@ -63,7 +63,7 @@ function clockOf(iso: string): string {
  * reorders itself as they work is one they have to re-read each time.
  */
 export function RouteHomeScreen({ navigation }: Props) {
-  const { route, loading, error, refresh } = useShift();
+  const { route, loading, refreshing, error, refreshVisibly } = useShift();
 
   /*
    * Memoised because of the fallback: `route?.stops ?? []` hands back a fresh
@@ -82,7 +82,13 @@ export function RouteHomeScreen({ navigation }: Props) {
         contentContainerStyle={styles.body}
         showsVerticalScrollIndicator={false}
         refreshControl={
-          <RefreshControl refreshing={loading && Boolean(route)} onRefresh={refresh} tintColor={accentColor} />
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => {
+              refreshVisibly().catch(() => {});
+            }}
+            tintColor={accentColor}
+          />
         }>
         <View style={styles.topBar}>
           <Text style={[fontStyle.fontSizeSmall2x, styles.eyebrow]}>{t.title.toUpperCase()}</Text>
@@ -103,13 +109,7 @@ export function RouteHomeScreen({ navigation }: Props) {
             <ActivityIndicator color={accentColor} />
           </View>
         ) : !route ? (
-          <EmptyState
-            icon={icons.route}
-            title={t.empty}
-            hint={t.emptyHint}
-            actionLabel={common.retry}
-            onAction={refresh}
-          />
+          <EmptyState icon={icons.route} title={t.empty} hint={t.emptyHint} />
         ) : (
           <>
             <View style={styles.hero}>

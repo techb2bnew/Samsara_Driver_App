@@ -5,7 +5,6 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import {
   AppIcon,
   Card,
-  EmptyState,
   ListRow,
   icons,
 } from '../../components';
@@ -23,7 +22,7 @@ import {
   textFaint,
   textMuted,
 } from '../../constans/Color';
-import { common, inspect as t, repairs as r } from '../../constans/Constants';
+import { inspect as t, repairs as r } from '../../constans/Constants';
 import { heightPercentageToDP as hp } from '../../utils';
 import * as api from '../../supabase/api';
 import { useAsync } from '../../hooks/useAsync';
@@ -42,7 +41,7 @@ type Props = NativeStackScreenProps<InspectStackParams, 'InspectHome'>;
  */
 export function InspectHomeScreen({ navigation }: Props) {
   const { vehicle } = useShift();
-  const { data: forms, loading, error, reload } = useAsync(() => api.loadForms(), []);
+  const { data: forms, loading, refreshing, error, reload } = useAsync(() => api.loadForms(), []);
 
   return (
     <SafeAreaView style={[BaseStyle.flex, styles.ground]} edges={['top']}>
@@ -50,7 +49,7 @@ export function InspectHomeScreen({ navigation }: Props) {
         contentContainerStyle={styles.body}
         showsVerticalScrollIndicator={false}
         refreshControl={
-          <RefreshControl refreshing={loading} onRefresh={reload} tintColor={accentColor} />
+          <RefreshControl refreshing={refreshing} onRefresh={reload} tintColor={accentColor} />
         }>
         <View style={styles.topBar}>
           <Text style={[fontStyle.fontSizeSmall2x, styles.eyebrow]}>{t.title.toUpperCase()}</Text>
@@ -120,19 +119,22 @@ export function InspectHomeScreen({ navigation }: Props) {
           </View>
         )}
 
+        {/*
+          The forms section is hidden entirely when there are none, rather than
+          showing "No forms to fill in".
+
+          The console's form builder is switched off — see modules.ts and
+          app/routes.tsx there — so no form can be created, which means this
+          list cannot fill and the empty state was pointing a driver at
+          something that does not exist. Gated on the list rather than
+          commented out, so the section comes back on its own the day the
+          office publishes one; nothing here has to change for that.
+        */}
         {loading ? (
           <View style={styles.loading}>
             <ActivityIndicator color={accentColor} />
           </View>
-        ) : (forms ?? []).length === 0 ? (
-          <EmptyState
-            icon={icons.inspect}
-            title={t.empty}
-            hint={t.emptyHint}
-            actionLabel={common.retry}
-            onAction={reload}
-          />
-        ) : (
+        ) : (forms ?? []).length === 0 ? null : (
           <>
             <Text style={[fontStyle.fontSizeSmall2x, fontStyle.fontWeightMedium, styles.section]}>
               {t.forms.toUpperCase()}

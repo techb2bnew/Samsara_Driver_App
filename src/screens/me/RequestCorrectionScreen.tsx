@@ -7,6 +7,7 @@ import {
   CustomButton,
   CustomTextInput,
   EmptyState,
+  ListRow,
   icons,
 } from '../../components';
 import { BaseStyle } from '../../constans/Style';
@@ -63,14 +64,34 @@ const CHOICES: Array<{ status: api.DutyStatus; label: string; color: string }> =
  * record and "because it is wrong" is not something they can approve.
  */
 export function RequestCorrectionScreen({ route, navigation }: Props) {
-  const eventId = route.params?.eventId;
   const { state } = useAuth();
   const profile = state.status === 'signedIn' ? state.profile : null;
   const { events, refresh } = useShift();
 
+  /*
+   * Reached two ways, and only one of them names a row.
+   *
+   * From a day log the driver has already tapped the entry they are arguing
+   * with. From the Me tab they have not — that row used to open this screen
+   * with no event at all and show "no longer exists", which read as the
+   * feature being broken. So with nothing chosen, this screen asks first.
+   */
+  const [chosenId, setChosenId] = useState<string | null>(null);
+  const eventId = route.params?.eventId ?? chosenId;
+
   const original = useMemo(
     () => events.find(e => e.id === eventId) ?? null,
     [events, eventId],
+  );
+
+  /* Newest first, and never a correction row — those are not entries to argue
+     with, they are the arguing. */
+  const choices = useMemo(
+    () =>
+      [...events]
+        .filter(e => !e.id.startsWith('local-'))
+        .sort((a, b) => b.startedAt.localeCompare(a.startedAt)),
+    [events],
   );
 
   const [status, setStatus] = useState<api.DutyStatus | null>(null);
@@ -110,6 +131,58 @@ export function RequestCorrectionScreen({ route, navigation }: Props) {
     } finally {
       setSending(false);
     }
+  }
+
+  /* Nothing picked yet: ask which entry, rather than showing an error. */
+  if (!original && !eventId) {
+    return (
+      <View style={[BaseStyle.flex, styles.ground]}>
+        <ScrollView contentContainerStyle={styles.body} showsVerticalScrollIndicator={false}>
+          <Text style={[fontStyle.fontSizeSmall2x, styles.subtitle]}>{t.pickHint}</Text>
+
+          {choices.length === 0 ? (
+            <View style={styles.pickEmpty}>
+              <EmptyState icon={icons.logbook} title={t.pickEmpty} hint={t.pickEmptyHint} />
+            </View>
+          ) : (
+            <>
+              <Text
+                style={[fontStyle.fontSizeSmall2x, fontStyle.fontWeightMedium, styles.section]}>
+                {t.pickTitle.toUpperCase()}
+              </Text>
+              <Card padded={false}>
+                {choices.map((event, i) => {
+                  const words = CHOICES.find(c => c.status === event.status);
+                  const day = new Date(event.startedAt).toLocaleDateString(undefined, {
+                    weekday: 'short',
+                    day: 'numeric',
+                    month: 'short',
+                  });
+                  return (
+                    <ListRow
+                      key={event.id}
+                      icon={icons.duty}
+                      tone={words?.color}
+                      title={words?.label ?? event.status}
+                      detail={t.pickAt(day, formatTime(event.startedAt))}
+                      extra={
+                        event.correction === 'pending'
+                          ? t.alreadyPending
+                          : event.correction === 'rejected'
+                            ? t.wasRejected
+                            : undefined
+                      }
+                      onPress={() => setChosenId(event.id)}
+                      last={i === choices.length - 1}
+                    />
+                  );
+                })}
+              </Card>
+            </>
+          )}
+        </ScrollView>
+      </View>
+    );
   }
 
   if (!original) {
@@ -254,6 +327,7 @@ const styles = StyleSheet.create({
   body: { paddingHorizontal: spacings.xxLarge, paddingBottom: spacings.ExtraLarge },
 
   subtitle: { color: textMuted, paddingTop: spacings.large, lineHeight: hp(2.5) },
+  pickEmpty: { marginTop: spacings.xxLarge },
   notice: {
     backgroundColor: accentSoft,
     borderRadius: 14,

@@ -27,7 +27,7 @@ import {
   textFaint,
   textMuted,
 } from '../../constans/Color';
-import { common, routeScreen, stopDetail as t } from '../../constans/Constants';
+import { common, paperwork, routeScreen, stopDetail as t } from '../../constans/Constants';
 import { heightPercentageToDP as hp } from '../../utils';
 import * as api from '../../supabase/api';
 import { formatTime } from '../../helpers/duty';
@@ -325,6 +325,21 @@ export function StopDetailScreen({ route: nav, navigation }: Props) {
           </View>
         )}
 
+        {/*
+          Where a delivery note is actually signed. Offered whether or not the
+          stop is marked arrived: paperwork often comes after the tap, and
+          sometimes the tap never happened.
+        */}
+        <CustomButton
+          title={paperwork.atStop}
+          icon={icons.camera}
+          variant="outline"
+          style={styles.paperwork}
+          onPress={() =>
+            navigation.navigate('AddPaperwork', { stopId: stop.id, stopName: stop.name })
+          }
+        />
+
         {!stop.arrivedAt && (
           <CustomButton
             title={t.markArrived}
@@ -403,6 +418,7 @@ const styles = StyleSheet.create({
   retry: { marginTop: spacings.normal },
 
   mapButton: { marginTop: spacings.large },
+  paperwork: { marginTop: spacings.large },
   noLocation: {
     color: textMuted,
     marginTop: spacings.large,

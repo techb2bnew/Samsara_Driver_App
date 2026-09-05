@@ -11,6 +11,10 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as api from '../supabase/api';
 import { notifications as t } from '../constans/Constants';
 import { useAuth } from './AuthContext';
+import { useSettings } from './SettingsContext';
+import { useShift } from './ShiftContext';
+import { currentStatus, segmentsForDay } from '../helpers/duty';
+import { drivingSinceBreak, limitsFor, regulatorFrom } from '../helpers/hosLimits';
 
 /**
  * What the driver has not seen yet.
@@ -34,7 +38,7 @@ import { useAuth } from './AuthContext';
 export type DriverNotification = {
   /** Stable, so a reload does not resurrect a dismissed one. */
   id: string;
-  kind: 'message' | 'route' | 'vehicle';
+  kind: 'message' | 'route' | 'vehicle' | 'break';
   title: string;
   body: string;
   at: string;
@@ -59,6 +63,8 @@ const KEEP = 40;
 export function NotificationProvider({ children }: { children: React.ReactNode }) {
   const { state } = useAuth();
   const profile = state.status === 'signedIn' ? state.profile : null;
+  const { settings } = useSettings();
+  const { events } = useShift();
 
   const [items, setItems] = useState<DriverNotification[]>([]);
   const [unreadMessages, setUnreadMessages] = useState(0);
@@ -85,6 +91,65 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
       current.some(i => i.id === next.id) ? current : [next, ...current].slice(0, KEEP),
     );
   }, []);
+
+  /*
+   * The break reminder.
+   *
+   * The one setting on that screen that does something today. Push needs a
+   * Firebase project the fleet does not have yet, and the email preference is
+   * the office's to act on — this one is entirely the app's, and it is the one
+   * that stops a driver losing a day to an hours violation.
+   *
+   * Fired at two points, not continuously: half an hour out, and once the
+   * limit has passed. The id carries which, so each is pushed once and a
+   * driver is not told the same thing every minute — `push` refuses an id it
+   * already holds.
+   *
+   * Only while actually driving. A reminder that arrives during the break the
+   * driver is already taking is noise, and noise is what gets a notification
+   * list ignored.
+   */
+  useEffect(() => {
+    if (!profile || !settings.notifyBreakReminder) return;
+
+    const book = regulatorFrom(profile.regulator);
+    if (!book) return;
+
+    const active = currentStatus(events);
+    if (active?.status !== 'driving') return;
+
+    const now = new Date();
+    const limits = limitsFor(book);
+    const driven = drivingSinceBreak(segmentsForDay(events, now, now), limits);
+    const left = limits.drivingBeforeBreak - driven;
+
+    /*
+     * Keyed by the day and the stage, so tomorrow warns again and today does
+     * not. Not keyed by the minute — that would push a new row every tick.
+     */
+    const day = now.toISOString().slice(0, 10);
+
+    if (left <= 0) {
+      push({
+        id: `break-over-${day}`,
+        kind: 'break',
+        title: t.breakOverdue,
+        body: t.breakOverdueBody(limits.breakLength),
+        at: now.toISOString(),
+      });
+      return;
+    }
+
+    if (left <= 30) {
+      push({
+        id: `break-soon-${day}`,
+        kind: 'break',
+        title: t.breakDue,
+        body: t.breakDueBody(Math.round(left), limits.breakLength),
+        at: now.toISOString(),
+      });
+    }
+  }, [profile, settings.notifyBreakReminder, events, push]);
 
   /** Message count, and the badge that hangs off it. */
   const refreshMessages = useCallback(async () => {

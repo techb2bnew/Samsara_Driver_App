@@ -22,7 +22,7 @@ import {
   textMuted,
   warnColor,
 } from '../../constans/Color';
-import { common, training as t } from '../../constans/Constants';
+import { training as t } from '../../constans/Constants';
 import { heightPercentageToDP as hp } from '../../utils';
 import * as api from '../../supabase/api';
 import { useAsync } from '../../hooks/useAsync';
@@ -60,7 +60,7 @@ export function TrainingScreen({ navigation }: Props) {
   const { state } = useAuth();
   const driverId = state.status === 'signedIn' ? state.profile.driverId : null;
 
-  const { data, loading, error, reload } = useAsync(
+  const { data, loading, refreshing, error, reload, reloadQuietly } = useAsync(
     () => (driverId ? api.loadMyCourses(driverId) : Promise.resolve([])),
     [driverId],
   );
@@ -73,7 +73,9 @@ export function TrainingScreen({ navigation }: Props) {
   */
   useFocusEffect(
     useCallback(() => {
-      reload();
+      // Quiet: coming back to a tab should update the rows, not flash a
+      // spinner over rows that are already correct.
+      reloadQuietly();
       // reload is recreated on every render, so depending on it here would
       // reload in a loop.
       // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -113,7 +115,7 @@ export function TrainingScreen({ navigation }: Props) {
         contentContainerStyle={styles.body}
         showsVerticalScrollIndicator={false}
         refreshControl={
-          <RefreshControl refreshing={loading} onRefresh={reload} tintColor={accentColor} />
+          <RefreshControl refreshing={refreshing} onRefresh={reload} tintColor={accentColor} />
         }>
         <Text style={[fontStyle.fontSizeSmall2x, styles.subtitle]}>{t.subtitle}</Text>
 
@@ -133,8 +135,6 @@ export function TrainingScreen({ navigation }: Props) {
             icon={icons.logbook}
             title={t.empty}
             hint={t.emptyHint}
-            actionLabel={common.retry}
-            onAction={reload}
           />
         ) : (
           <>

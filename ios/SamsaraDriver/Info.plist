@@ -54,6 +54,10 @@
 		<key>NSAllowsLocalNetworking</key>
 		<true/>
 	</dict>
+	<key>NSCameraUsageDescription</key>
+	<string>Photograph delivery paperwork at a stop, and faults you find on the truck.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Attach a photo you have already taken to paperwork or a fault report.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Shows where you are on your route, and reports your truck's position to your fleet office while you are on duty.</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>

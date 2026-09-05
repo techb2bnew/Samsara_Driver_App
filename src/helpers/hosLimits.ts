@@ -24,7 +24,7 @@ export function regulatorFrom(value: string | null): Regulator | null {
   return null;
 }
 
-type Limits = {
+export type Limits = {
   dailyDriving: number;
   /** Elapsed span from coming on duty. FMCSA only. */
   dutyWindow: number | null;
@@ -59,6 +59,17 @@ const LIMITS: Record<Regulator, Limits> = {
   },
 };
 
+/**
+ * The rule book's numbers, for anything that has to reason about them.
+ *
+ * Exported so violations.ts works from the same table the recap does. Two
+ * copies of "11 hours" would drift, and the first sign of it would be a driver
+ * whose remaining-time strip and violation list disagreed.
+ */
+export function limitsFor(regulator: Regulator): Limits {
+  return LIMITS[regulator];
+}
+
 export function cycleDaysFor(regulator: Regulator): number {
   return LIMITS[regulator].cycleDays;
 }
@@ -84,7 +95,13 @@ function windowUsed(segments: Segment[]): number {
  * BEFORE the driving it excuses. A driver who drove nine hours and then rested
  * has not complied, even though their longest break is long enough.
  */
-function drivingSinceBreak(segments: Segment[], limits: Limits): number {
+/**
+ * Driving time since the last qualifying break.
+ *
+ * Exported so the break reminder can watch it. The recap shows what is LEFT;
+ * a reminder has to know how close the driver already is.
+ */
+export function drivingSinceBreak(segments: Segment[], limits: Limits): number {
   const ordered = [...segments].sort((a, b) => a.from - b.from);
 
   let since = 0;

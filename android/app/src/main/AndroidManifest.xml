@@ -5,6 +5,16 @@
     <!-- The map's blue dot, and reporting the truck's position. COARSE is
          declared alongside FINE because Android 12+ lets the driver grant only
          the approximate one, and the app has to keep working if they do. -->
+    <!-- NOT android.permission.CAMERA, and deliberately so.
+         react-native-image-picker does not need it: launchCamera hands off to
+         the system camera app, which returns one photo the driver chose to
+         take. Declaring it anyway makes Android REQUIRE it — the permission
+         must then be granted at runtime before launchCamera will do anything,
+         and it fails silently when it has not been. That is exactly what
+         happened when it was added here. Leave it out.
+
+         The gallery needs no permission either, for the same reason: the
+         system picker returns one file the driver picked. -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
 

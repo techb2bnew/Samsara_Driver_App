@@ -22,6 +22,7 @@ import {
   textMuted,
 } from '../../constans/Color';
 import { me as t, modal, notifications as n, screenTitles } from '../../constans/Constants';
+import { personName } from '../../helpers/names';
 import { useAuth } from '../../context/AuthContext';
 import { useShift } from '../../context/ShiftContext';
 import { useNotifications } from '../../context/NotificationContext';
@@ -46,7 +47,7 @@ export function MeHomeScreen({ navigation }: Props) {
   const [busy, setBusy] = useState(false);
 
   const profile = state.status === 'signedIn' ? state.profile : null;
-  const name = profile ? `${profile.firstName} ${profile.lastName}`.trim() : '';
+  const name = profile ? personName(profile.firstName, profile.lastName) : '';
   const initials = name
     .split(/\s+/)
     .filter(Boolean)

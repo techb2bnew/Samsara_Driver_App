@@ -65,7 +65,7 @@ export function CourseScreen({ route, navigation }: Props) {
   const { state } = useAuth();
   const driverId = state.status === 'signedIn' ? state.profile.driverId : null;
 
-  const { data, loading, error, reload } = useAsync(
+  const { data, loading, refreshing, error, reload } = useAsync(
     () => (driverId ? api.loadMyCourses(driverId) : Promise.resolve([])),
     [driverId],
   );
@@ -277,7 +277,7 @@ export function CourseScreen({ route, navigation }: Props) {
         contentContainerStyle={styles.body}
         showsVerticalScrollIndicator={false}
         refreshControl={
-          <RefreshControl refreshing={loading} onRefresh={reload} tintColor={accentColor} />
+          <RefreshControl refreshing={refreshing} onRefresh={reload} tintColor={accentColor} />
         }>
         <Text style={[fontStyle.fontSizeLargeX, fontStyle.fontWeightMedium1x, styles.title]}>
           {course.title}

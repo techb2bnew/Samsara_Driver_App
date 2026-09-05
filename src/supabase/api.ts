@@ -1004,6 +1004,64 @@ export async function raiseWorkOrder(
 }
 
 /**
+ * Calls back when a fault this driver reported changes, or an inspection they
+ * filed is reviewed.
+ *
+ * Both are the office acting on something the driver sent, and both used to
+ * arrive only when the screen was reopened. A driver who reports soft brakes
+ * and sees nothing move assumes nobody read it — which is how reporting stops.
+ *
+ * Not filtered server-side. defects keys on reported_by_driver and
+ * form_submissions on driver_id, and a channel can carry one filter per table,
+ * so the narrowing is left to the select policies — which are evaluated per
+ * row on the socket anyway. The cost is a phone woken for rows it discards,
+ * and a fleet files a handful of these a day, not a stream.
+ */
+export function onMyReportsChanged(onChange: () => void): () => void {
+  const channel = supabase
+    .channel(nextTopic('my-reports'))
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'defects' }, () => onChange())
+    .on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table: 'form_submissions' },
+      () => onChange(),
+    )
+    .subscribe();
+
+  return () => {
+    supabase.removeChannel(channel);
+  };
+}
+
+/**
+ * Takes back a repair request the driver raised.
+ *
+ * Cancel, not close. There is no way for a driver to mark a job completed and
+ * there should not be: a driver who could close a repair could close one that
+ * never happened, and the next person to read that record is an inspector
+ * asking why a truck with a reported brake fault was on the road.
+ *
+ * The policy allows this only while the job is still open and only on rows
+ * this driver raised — once the workshop has picked it up, calling it off is
+ * their decision, not a surprise from the cab.
+ */
+export async function cancelMyWorkOrder(id: string): Promise<void> {
+  const { data, error } = await supabase
+    .from('work_orders')
+    .update({ status: 'cancelled' })
+    .eq('id', id)
+    .select('id');
+
+  if (error) throw new Error(error.message);
+  /*
+   * An update that matches no row under RLS is not an error — it is an empty
+   * result. Without this check a driver whose request had just been assigned
+   * would see the button succeed and nothing change.
+   */
+  if ((data ?? []).length === 0) throw new Error('That request can no longer be cancelled.');
+}
+
+/**
  * Calls back when a repair on this driver's truck changes.
  *
  * Not filtered to the driver, unlike the other subscriptions: a work order
@@ -1078,6 +1136,18 @@ export async function loadMessages(driverId: string): Promise<Message[]> {
  * random id: this shows up in the Supabase dashboard, and "messages:<id>#3" is
  * something you can count and reason about, where a random suffix is noise.
  */
+/**
+ * A short unique tail for a storage path.
+ *
+ * Not crypto.randomUUID: Hermes has it only on newer versions, and a storage
+ * path is not a security boundary — it stops two drivers photographing
+ * "note.jpg" from overwriting each other, and the folder above it is already
+ * scoped to one driver by policy.
+ */
+function randomId(): string {
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
 let channelSeq = 0;
 
 function nextTopic(name: string): string {
@@ -1378,6 +1448,81 @@ export async function saveCourseProgress(
 }
 
 /* ========================================================================
+   Settings
+   ======================================================================== */
+
+export type DriverSettings = {
+  distanceUnit: 'km' | 'mi';
+  notifyPush: boolean;
+  notifyEmail: boolean;
+  notifyBreakReminder: boolean;
+};
+
+const DEFAULT_SETTINGS: DriverSettings = {
+  distanceUnit: 'km',
+  notifyPush: true,
+  notifyEmail: false,
+  notifyBreakReminder: true,
+};
+
+/**
+ * This driver's own preferences.
+ *
+ * A separate table from `drivers` on purpose, and the reason is worth keeping
+ * written down: row-level security grants a whole ROW, never a column. A
+ * driver allowed to write their own `drivers` row could change their name,
+ * their depot and their employment status. What is genuinely theirs to change
+ * lives here instead.
+ *
+ * No row yet is not an error — a driver who has never opened this screen has
+ * none. The defaults are returned so the screen has something to draw.
+ */
+export async function loadMySettings(driverId: string): Promise<DriverSettings> {
+  const { data, error } = await supabase
+    .from('driver_settings')
+    .select('distance_unit, notify_push, notify_email, notify_break_reminder')
+    .eq('driver_id', driverId)
+    .maybeSingle();
+
+  if (error) throw new Error(error.message);
+  if (!data) return DEFAULT_SETTINGS;
+
+  return {
+    distanceUnit: data.distance_unit === 'mi' ? 'mi' : 'km',
+    notifyPush: data.notify_push ?? DEFAULT_SETTINGS.notifyPush,
+    notifyEmail: data.notify_email ?? DEFAULT_SETTINGS.notifyEmail,
+    notifyBreakReminder: data.notify_break_reminder ?? DEFAULT_SETTINGS.notifyBreakReminder,
+  };
+}
+
+/**
+ * Saves them, creating the row the first time.
+ *
+ * upsert on driver_id, because the row may not exist and the driver cannot be
+ * asked to care which. org_id is sent so the insert case has one — the table
+ * requires it, and the policy checks driver_id rather than org, so a wrong org
+ * would be accepted and then be wrong forever.
+ */
+export async function saveMySettings(
+  orgId: string,
+  driverId: string,
+  next: DriverSettings,
+): Promise<void> {
+  const { error } = await supabase.from('driver_settings').upsert(
+    {
+      driver_id: driverId,
+      org_id: orgId,
+      distance_unit: next.distanceUnit,
+      notify_push: next.notifyPush,
+      notify_email: next.notifyEmail,
+      notify_break_reminder: next.notifyBreakReminder,
+    },
+    { onConflict: 'driver_id' },
+  );
+  if (error) throw new Error(error.message);
+}
+
+/* ========================================================================
    My documents
    ======================================================================== */
 
@@ -1391,6 +1536,107 @@ export async function loadMyDocuments(driverId: string) {
 
   if (error) throw new Error(error.message);
   return data ?? [];
+}
+
+/** What a driver can file from the cab. Compliance paperwork is the office's. */
+export const TRIP_DOC_TYPES = [
+  'proof_of_delivery',
+  'bill_of_lading',
+  'receipt',
+  'fuel_docket',
+  'other',
+] as const;
+
+export type TripDocType = (typeof TRIP_DOC_TYPES)[number];
+
+/**
+ * Files a photograph of paperwork from the cab.
+ *
+ * Trip category only, and that is not a shortcut — it is the whole of what the
+ * storage policy allows. A driver writes under
+ *
+ *   <org_id>/trip/<driver_id>/…
+ *
+ * and nothing else: they can read their own licence and medical but never
+ * write them, because a driver who could replace their own medical
+ * certificate is the entire reason that certificate is on file.
+ *
+ * The file goes up first. A row pointing at a file that is not there is a
+ * broken document; a file with no row is litter the office can sweep.
+ */
+export async function uploadTripDocument(
+  orgId: string,
+  driverId: string,
+  input: {
+    docType: TripDocType;
+    title: string;
+    /** A local file:// path from the picker. */
+    uri: string;
+    fileName: string;
+    mimeType: string;
+    vehicleId?: string | null;
+    /** The stop it was signed at, when it came from one. */
+    stopId?: string | null;
+  },
+): Promise<string> {
+  const safeName = input.fileName.replace(/[^A-Za-z0-9._-]+/g, '-').slice(-80);
+  const path = `${orgId}/trip/${driverId}/${randomId()}-${safeName}`;
+
+  /*
+   * Read as an ArrayBuffer rather than handed the uri.
+   *
+   * supabase-js has no React Native file handle to work from, and passing
+   * FormData here uploads zero bytes on Android — silently, with a 200 back.
+   * fetch on a file:// uri is the one path that works on both platforms.
+   */
+  const response = await fetch(input.uri);
+  const bytes = await response.arrayBuffer();
+
+  const upload = await supabase.storage.from('documents').upload(path, bytes, {
+    contentType: input.mimeType,
+    upsert: false,
+  });
+  if (upload.error) throw new Error(upload.error.message);
+
+  const { data, error } = await supabase
+    .from('documents')
+    .insert({
+      org_id: orgId,
+      category: 'trip',
+      /*
+       * Two different columns, and the difference matters.
+       *
+       *   driver_id           who the document is ABOUT
+       *   uploaded_by_driver  who filed it
+       *
+       * The insert policy keys on the second, not the first — a driver may
+       * file paperwork, and may not file paperwork claiming to be somebody
+       * else's work. For a delivery note they are the same person, but they
+       * are not the same question, and setting only driver_id was refused.
+       */
+      driver_id: driverId,
+      uploaded_by_driver: driverId,
+      vehicle_id: input.vehicleId ?? null,
+      /* Filed against the actual stop, so the office does not have to match a
+         note to a job by reading its title. */
+      stop_id: input.stopId ?? null,
+      doc_type: input.docType,
+      title: input.title.trim() || input.fileName,
+      storage_path: path,
+      mime_type: input.mimeType,
+      size_bytes: bytes.byteLength,
+    })
+    .select('id')
+    .single();
+
+  if (error) {
+    // The row failed, so nothing points at the file. Take it back out rather
+    // than leaving a paid-for object nobody can reach.
+    await supabase.storage.from('documents').remove([path]);
+    throw new Error(error.message);
+  }
+
+  return data.id;
 }
 
 /** A short-lived link, fetched when the driver taps rather than on render. */

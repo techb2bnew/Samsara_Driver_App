@@ -43,6 +43,8 @@ export type RouteStackParams = {
   RouteHome: undefined;
   StopDetail: { stopId: string };
   RouteMap: { routeId: string };
+  /** Also in Me. Reached from the stop where the note was signed. */
+  AddPaperwork: { stopId?: string; stopName?: string } | undefined;
 };
 
 export type InspectStackParams = {
@@ -66,10 +68,25 @@ export type MessagesStackParams = {
 export type MeStackParams = {
   MeHome: undefined;
   MyLogs: undefined;
+  /*
+   * Also in Duty, like Notifications and RequestCorrection. A driver who
+   * opened a day from their own log list should come back to that list, not
+   * be thrown into the Duty tab.
+   */
+  DayLog: { date: string };
   MyInspections: undefined;
   MyFaults: undefined;
   MyViolations: undefined;
   MyDocuments: undefined;
+  /*
+   * Also in the Route stack. Paperwork happens in two places — at the stop
+   * where a note is signed, and afterwards when somebody remembers — and a
+   * driver reaching it from a stop should come back to that stop.
+   *
+   * The stop's name seeds the note, so the office gets it filed against the
+   * right job without the driver typing it out.
+   */
+  AddPaperwork: { stopId?: string; stopName?: string } | undefined;
   Training: undefined;
   /*
    * The assignment id, not the course id. Two drivers on the same course have
