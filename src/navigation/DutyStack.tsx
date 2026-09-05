@@ -3,6 +3,7 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { DutyHomeScreen } from '../screens/duty/DutyHomeScreen';
 import { VehiclePickerScreen } from '../screens/duty/VehiclePickerScreen';
 import { DayLogScreen } from '../screens/duty/DayLogScreen';
+import { RequestCorrectionScreen } from '../screens/me/RequestCorrectionScreen';
 import { NotificationsScreen } from '../screens/me/NotificationsScreen';
 import { homeScreenOptions, nestedScreenOptions } from './screenOptions';
 import { screenTitles } from '../constans/Constants';
@@ -30,6 +31,11 @@ export function DutyStack() {
         name="DayLog"
         component={DayLogScreen}
         options={{ title: screenTitles.dayLog }}
+      />
+      <Stack.Screen
+        name="RequestCorrection"
+        component={RequestCorrectionScreen}
+        options={{ title: screenTitles.requestCorrection, presentation: 'modal' }}
       />
       <Stack.Screen
         name="Notifications"

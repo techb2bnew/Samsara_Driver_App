@@ -150,6 +150,8 @@ export async function setPassword(password: string): Promise<void> {
    ======================================================================== */
 
 export type VehicleOption = {
+  /** Another driver is signed on to it right now. */
+  inUse?: boolean;
   id: string;
   name: string;
   plate: string;
@@ -165,23 +167,48 @@ export type VehicleOption = {
  * driver_app_reads migration. Trailers are excluded here: a trailer is towed,
  * not signed on to.
  */
+/**
+ * The trucks a driver can pick from, and which of them are already taken.
+ *
+ * The taken list comes from an RPC, not from the table. dva_select_self
+ * returns the driver's own assignments and nothing else, so read straight from
+ * here every truck in the depot looks free — including the one a colleague is
+ * sitting in. The driver found out by picking it and getting a unique-key
+ * error from Postgres.
+ *
+ * Ids only, never who is on them: which truck is unavailable is a fact about
+ * the truck, and a live list of where every colleague is would be something
+ * else entirely.
+ */
 export async function loadVehicleOptions(): Promise<VehicleOption[]> {
-  const { data, error } = await supabase
-    .from('vehicles')
-    .select('id, name, plate, make, model, odometer_km')
-    .eq('kind', 'truck')
-    .eq('status', 'active')
-    .is('deleted_at', null)
-    .order('name', { ascending: true, nullsFirst: false });
+  const [vehicles, taken] = await Promise.all([
+    supabase
+      .from('vehicles')
+      .select('id, name, plate, make, model, odometer_km')
+      .eq('kind', 'truck')
+      .eq('status', 'active')
+      .is('deleted_at', null)
+      .order('name', { ascending: true, nullsFirst: false }),
+    supabase.rpc('taken_vehicle_ids'),
+  ]);
 
-  if (error) throw new Error(error.message);
+  if (vehicles.error) throw new Error(vehicles.error.message);
+  /*
+   * A failure here is not fatal. Without the list every truck shows as free,
+   * which is exactly how this behaved before — and sign_on_to_vehicle refuses
+   * a taken truck anyway. Better a picker with no badges than no picker.
+   */
+  const busy = new Set<string>(
+    taken.error ? [] : ((taken.data as unknown as string[] | null) ?? []),
+  );
 
-  return (data ?? []).map((v) => ({
+  return (vehicles.data ?? []).map((v) => ({
     id: v.id,
     name: v.name?.trim() || v.plate,
     plate: v.plate,
     makeModel: [v.make, v.model].filter(Boolean).join(' ').trim(),
     odometerKm: Number(v.odometer_km ?? 0),
+    inUse: busy.has(v.id),
   }));
 }
 
@@ -217,26 +244,21 @@ export async function loadCurrentVehicle(
  * who was driving a truck last Tuesday needs an answer, and a driver moving
  * between trucks must not be listed against both.
  */
-export async function signOnToVehicle(
-  orgId: string,
-  driverId: string,
-  vehicleId: string,
-): Promise<void> {
-  const now = new Date().toISOString();
-
-  const closed = await supabase
-    .from('driver_vehicle_assignments')
-    .update({ ended_at: now })
-    .eq('driver_id', driverId)
-    .is('ended_at', null);
-  if (closed.error) throw new Error(closed.error.message);
-
-  const { error } = await supabase.from('driver_vehicle_assignments').insert({
-    org_id: orgId,
-    driver_id: driverId,
-    vehicle_id: vehicleId,
-    started_at: now,
-  });
+/**
+ * Puts this driver on a truck.
+ *
+ * One RPC, which is one transaction. This used to be two statements — close
+ * the current assignment, insert the new one — and when the insert hit
+ * dva_active_vehicle_idx because a colleague was already on that truck, the
+ * close had already committed. The driver was left on nothing, holding a
+ * message about a duplicate key.
+ *
+ * The org and driver are not passed: the function reads them from the session,
+ * which is the only version of them that cannot be tampered with.
+ */
+export async function signOnToVehicle(vehicleId: string): Promise<void> {
+  const { error } = await supabase.rpc('sign_on_to_vehicle', { p_vehicle_id: vehicleId });
+  // The function raises sentences, not constraint names, so this is showable.
   if (error) throw new Error(error.message);
 }
 
@@ -294,9 +316,26 @@ export type DutyStatus =
 
 export type DutyEvent = {
   id: string;
+  /**
+   * The status the day should be drawn with.
+   *
+   * Not always what the original row says: an accepted correction replaces it.
+   * The original row is never modified — the table is append-only, and the
+   * whole point of a correction is that both versions survive for an auditor.
+   */
   status: DutyStatus;
   startedAt: string;
   vehicleId: string | null;
+  /**
+   * A correction the driver asked for on this row, and where it got to.
+   *
+   * 'pending' — the office has not decided. The day is unchanged.
+   * 'rejected' — the office said no. The day is unchanged, and the driver
+   *              needs to be told rather than left wondering.
+   * null — nothing outstanding, either because nothing was asked or because
+   *        it was accepted and is already reflected in `status`.
+   */
+  correction: 'pending' | 'rejected' | null;
 };
 
 /**
@@ -336,7 +375,7 @@ export async function loadDutyEvents(
 ): Promise<DutyEvent[]> {
   const { data, error } = await supabase
     .from('duty_status_events')
-    .select('id, status, started_at, vehicle_id, edit_of_id')
+    .select('id, status, started_at, vehicle_id, edit_of_id, edit_status, created_at')
     .eq('driver_id', driverId)
     .gte('started_at', fromIso)
     .lte('started_at', toIso)
@@ -344,15 +383,57 @@ export async function loadDutyEvents(
 
   if (error) throw new Error(error.message);
 
-  return (data ?? [])
-    // A proposed correction is not part of the day until it is accepted.
+  const rows = data ?? [];
+
+  /*
+   * Corrections, grouped by the row they argue with.
+   *
+   * This used to drop every row with an edit_of_id and stop there, with a
+   * comment saying a correction "is not part of the day until it is accepted".
+   * The filter never checked whether it HAD been accepted — so the office
+   * approving a request changed precisely nothing: not the graph, not the
+   * totals, and the driver was never told either way.
+   *
+   * Newest first within each group, because a driver who asked twice meant the
+   * second one.
+   */
+  const edits = new Map<string, typeof rows>();
+  for (const row of rows) {
+    if (!row.edit_of_id) continue;
+    const group = edits.get(row.edit_of_id) ?? [];
+    group.push(row);
+    edits.set(row.edit_of_id, group);
+  }
+  for (const group of edits.values()) {
+    group.sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
+  }
+
+  return rows
     .filter((e) => e.edit_of_id === null)
-    .map((e) => ({
-      id: e.id,
-      status: e.status,
-      startedAt: e.started_at,
-      vehicleId: e.vehicle_id,
-    }));
+    .map((e) => {
+      const group = edits.get(e.id) ?? [];
+      const accepted = group.find((x) => x.edit_status === 'accepted');
+      const pending = group.find((x) => x.edit_status === 'pending');
+      const rejected = group.find((x) => x.edit_status === 'rejected');
+
+      return {
+        id: e.id,
+        /*
+         * An accepted correction wins. The original row is left untouched in
+         * the table; only what the driver is shown changes, which is the
+         * difference between correcting a log and rewriting one.
+         */
+        status: accepted ? accepted.status : e.status,
+        startedAt: e.started_at,
+        vehicleId: e.vehicle_id,
+        /*
+         * Pending outranks rejected. A driver who was refused and asked again
+         * is waiting on the second answer, not still being told about the
+         * first.
+         */
+        correction: pending ? ('pending' as const) : rejected ? ('rejected' as const) : null,
+      };
+    });
 }
 
 /**
@@ -457,6 +538,13 @@ export type RouteStop = {
   arrivedAt: string | null;
   latitude: number | null;
   longitude: number | null;
+  /**
+   * Metres between the driver and the stop when they marked it arrived.
+   *
+   * Null means the arrival was recorded without a position check — no fix, or
+   * a stop the office gave no coordinates. Not the same as zero.
+   */
+  arrivedDistanceM: number | null;
 };
 
 export type AssignedRoute = {
@@ -498,7 +586,15 @@ export function parsePath(value: string | null): LatLng[] {
 export async function loadMyRoute(driverId: string): Promise<AssignedRoute | null> {
   const { data, error } = await supabase
     .from('routes')
-    .select('id, reference, status, planned_start_at, notes, path_polyline, planned_distance_km')
+    .select(
+      `
+      id, reference, status, planned_start_at, notes, path_polyline, planned_distance_km,
+      route_stops (
+        id, sequence, name, address, window_start_at, window_end_at, arrived_at, latitude, longitude,
+        arrived_distance_m
+      )
+    `,
+    )
     .eq('driver_id', driverId)
     .in('status', ['planned', 'dispatched', 'in_progress'])
     .is('deleted_at', null)
@@ -509,13 +605,9 @@ export async function loadMyRoute(driverId: string): Promise<AssignedRoute | nul
   if (error) throw new Error(error.message);
   if (!data) return null;
 
-  const stops = await supabase
-    .from('route_stops')
-    .select('id, sequence, name, address, window_start_at, window_end_at, arrived_at, latitude, longitude')
-    .eq('route_id', data.id)
-    .order('sequence', { ascending: true });
-
-  if (stops.error) throw new Error(stops.error.message);
+  const stops = [...((data as { route_stops?: Array<Record<string, unknown>> }).route_stops ?? [])].sort(
+    (a, b) => Number(a.sequence) - Number(b.sequence),
+  );
 
   return {
     id: data.id,
@@ -526,16 +618,20 @@ export async function loadMyRoute(driverId: string): Promise<AssignedRoute | nul
     path: parsePath(data.path_polyline),
     plannedDistanceKm:
       data.planned_distance_km === null ? null : Number(data.planned_distance_km),
-    stops: (stops.data ?? []).map((s) => ({
-      id: s.id,
-      sequence: s.sequence,
-      name: s.name,
-      address: s.address,
-      windowStartAt: s.window_start_at,
-      windowEndAt: s.window_end_at,
-      arrivedAt: s.arrived_at,
-      latitude: s.latitude === null ? null : Number(s.latitude),
-      longitude: s.longitude === null ? null : Number(s.longitude),
+    stops: stops.map(s => ({
+      id: s.id as string,
+      sequence: s.sequence as number,
+      name: s.name as string,
+      address: (s.address as string | null) ?? null,
+      windowStartAt: (s.window_start_at as string | null) ?? null,
+      windowEndAt: (s.window_end_at as string | null) ?? null,
+      arrivedAt: (s.arrived_at as string | null) ?? null,
+      latitude: s.latitude === null || s.latitude === undefined ? null : Number(s.latitude),
+      longitude: s.longitude === null || s.longitude === undefined ? null : Number(s.longitude),
+      arrivedDistanceM:
+        s.arrived_distance_m === null || s.arrived_distance_m === undefined
+          ? null
+          : Number(s.arrived_distance_m),
     })),
   };
 }
@@ -547,10 +643,36 @@ export async function loadMyRoute(driverId: string): Promise<AssignedRoute | nul
  * may tap this in a dead zone, and the time they arrived is not the time the
  * write finally lands.
  */
-export async function markStopArrived(stopId: string, arrivedAt: string): Promise<void> {
+/**
+ * Marks a stop arrived, with where the driver was when they did it.
+ *
+ * The position is optional because it has to be. A lorry parked between two
+ * warehouses often has no fix, and a driver standing at the right gate with a
+ * phone that cannot see the sky still has to be able to work. Sending null
+ * records the arrival as unverified, which is a more useful thing to hand a
+ * dispatcher than a driver locked out of their own route.
+ *
+ * `arrivedAt` is the moment the driver tapped, not the moment this lands —
+ * same as every other write in this app, for the same reason.
+ */
+export async function markStopArrived(
+  stopId: string,
+  arrivedAt: string,
+  at?: { latitude: number; longitude: number; distanceM: number } | null,
+): Promise<void> {
   const { error } = await supabase
     .from('route_stops')
-    .update({ arrived_at: arrivedAt })
+    .update({
+      arrived_at: arrivedAt,
+      /*
+       * All three together or all three null — the table's own constraint
+       * refuses half a coordinate, because a lone latitude plots itself on the
+       * Greenwich meridian rather than failing.
+       */
+      arrived_latitude: at?.latitude ?? null,
+      arrived_longitude: at?.longitude ?? null,
+      arrived_distance_m: at?.distanceM ?? null,
+    })
     .eq('id', stopId);
   if (error) throw new Error(error.message);
 }
@@ -716,6 +838,61 @@ export async function reportDefect(
   return data.id;
 }
 
+/**
+ * Files a fault, and optionally asks the workshop to book the job in.
+ *
+ * The work order goes FIRST when one is wanted, so the defect can point at it
+ * — a driver cannot update a defect afterwards (no update policy, on purpose:
+ * a driver who could edit a defect could mark their own truck sound), so the
+ * link has to be set on insert or never.
+ *
+ * If the work order fails, the defect is still filed and the caller is told
+ * separately. That is the safe direction: a fault on record with no job raised
+ * is a nuisance the office can fix, and a fault that vanished because the
+ * workshop request failed is a truck driving around with an unreported
+ * problem. The reverse leak — a work order with no defect behind it — is
+ * litter rather than lost data, and the office can cancel it.
+ */
+export async function fileFault(
+  orgId: string,
+  driverId: string,
+  vehicleId: string,
+  input: DefectInput & { askWorkshop: boolean; at: string },
+): Promise<{ defectId: string; workOrderId: string | null; workshopError: string | null }> {
+  let workOrderId: string | null = null;
+  let workshopError: string | null = null;
+
+  if (input.askWorkshop) {
+    try {
+      workOrderId = await raiseWorkOrder(orgId, driverId, vehicleId, {
+        title: input.finding.trim() || input.area.trim(),
+        description: `${input.area.trim()} — reported from the driver app.`,
+        openedAt: input.at,
+      });
+    } catch (cause) {
+      workshopError = cause instanceof Error ? cause.message : 'Unknown error';
+    }
+  }
+
+  const { data, error } = await supabase
+    .from('defects')
+    .insert({
+      org_id: orgId,
+      vehicle_id: vehicleId,
+      reported_by_driver: driverId,
+      area: input.area.trim(),
+      finding: input.finding.trim(),
+      severity: input.severity,
+      status: 'open',
+      work_order_id: workOrderId,
+    })
+    .select('id')
+    .single();
+
+  if (error) throw new Error(error.message);
+  return { defectId: data.id, workOrderId, workshopError };
+}
+
 export async function loadMyDefects(driverId: string) {
   const { data, error } = await supabase
     .from('defects')
@@ -746,17 +923,117 @@ export async function loadMyInspections(driverId: string) {
   }));
 }
 
-/** Repairs on trucks this driver has driven. Read only — see the schema. */
-export async function loadMyWorkOrders() {
+export type MyWorkOrder = {
+  id: string;
+  reference: string | null;
+  title: string;
+  description: string | null;
+  status: 'open' | 'assigned' | 'in_progress' | 'completed' | 'cancelled';
+  openedAt: string | null;
+  completedAt: string | null;
+  vehicleId: string;
+  /** True when this driver raised it, rather than the office. */
+  mine: boolean;
+};
+
+/**
+ * Repairs on trucks this driver has driven.
+ *
+ * Completed ones are included now, where they used to be filtered out. A
+ * driver who reported soft brakes wants to see the job closed — that is the
+ * whole reason they look at this screen — and a list that dropped a job the
+ * moment it was finished read as though the request had been ignored.
+ */
+export async function loadMyWorkOrders(driverId: string): Promise<MyWorkOrder[]> {
   const { data, error } = await supabase
     .from('work_orders')
-    .select('id, reference, title, status, opened_at, vehicle_id')
+    .select(
+      'id, reference, title, description, status, opened_at, completed_at, vehicle_id, requested_by_driver',
+    )
     .is('deleted_at', null)
-    .neq('status', 'completed')
-    .order('opened_at', { ascending: false });
+    .order('opened_at', { ascending: false })
+    .limit(50);
 
   if (error) throw new Error(error.message);
-  return data ?? [];
+  return (data ?? []).map((w) => ({
+    id: w.id,
+    reference: w.reference,
+    title: w.title,
+    description: w.description,
+    status: w.status,
+    openedAt: w.opened_at,
+    completedAt: w.completed_at,
+    vehicleId: w.vehicle_id,
+    mine: w.requested_by_driver === driverId,
+  }));
+}
+
+/**
+ * Asks the workshop for a job on the truck the driver is signed on to.
+ *
+ * Deliberately thin. Everything that costs money — labour, parts, who takes
+ * the job — is left null and stays the workshop's to fill in; the insert
+ * policy refuses the row otherwise. A driver is telling the office what needs
+ * doing, not booking it in.
+ *
+ * `openedAt` comes from the caller, not now(): the driver taps this standing
+ * next to the truck, which is often where there is no signal.
+ */
+export async function raiseWorkOrder(
+  orgId: string,
+  driverId: string,
+  vehicleId: string,
+  input: { title: string; description: string; openedAt: string },
+): Promise<string> {
+  const { data, error } = await supabase
+    .from('work_orders')
+    .insert({
+      org_id: orgId,
+      vehicle_id: vehicleId,
+      requested_by_driver: driverId,
+      title: input.title.trim(),
+      description: input.description.trim() || null,
+      status: 'open',
+      opened_at: input.openedAt,
+    })
+    .select('id')
+    .single();
+
+  if (error) throw new Error(error.message);
+  return data.id;
+}
+
+/**
+ * Calls back when a repair on this driver's truck changes.
+ *
+ * Not filtered to the driver, unlike the other subscriptions: a work order
+ * belongs to a VEHICLE, and there is no driver_id column to filter on. The
+ * select policy does the narrowing — it only returns work orders for trucks
+ * this driver has been assigned to — and that policy is evaluated per row on
+ * the socket, so nothing else arrives.
+ *
+ * The cost is that the server cannot pre-filter, so the phone is woken for
+ * rows it then discards. Acceptable here: a workshop closes a handful of jobs
+ * a day, not a stream.
+ */
+export function onMyWorkOrdersChanged(onChange: () => void): () => void {
+  const channel = supabase
+    .channel(nextTopic('work-orders'))
+    .on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table: 'work_orders' },
+      () => onChange(),
+    )
+    .on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table: 'defects' },
+      () => onChange(),
+    )
+    .subscribe();
+
+  return () => {
+    supabase.removeChannel(channel);
+  };
 }
 
 /* ========================================================================
@@ -875,6 +1152,53 @@ export function onMyAssignmentChanged(driverId: string, onChange: () => void): (
 }
 
 /**
+ * Calls back when this driver's duty log changes anywhere.
+ *
+ * Both tables on one channel, because both answer the same question — is what
+ * this screen is showing still what the record says — and one socket topic is
+ * cheaper than two. Two `.on()` calls before `subscribe()` is the supported
+ * shape; adding one after is the error the topic counter exists to avoid.
+ *
+ * This fires for the phone's own writes too. It has to: the client cannot tell
+ * its own insert from the other device's, because a duty event row looks the
+ * same either way. The caller collapses a burst into one read rather than
+ * trying to guess.
+ *
+ * duty_status_events covers a status change and a correction being reviewed.
+ * hos_daily_logs covers certification, which is the one a second screen most
+ * needs — certifying a day twice is a thing a driver gets asked about.
+ */
+export function onMyDutyChanged(driverId: string, onChange: () => void): () => void {
+  const channel = supabase
+    .channel(nextTopic(`duty:${driverId}`))
+    .on(
+      'postgres_changes',
+      {
+        event: '*',
+        schema: 'public',
+        table: 'duty_status_events',
+        filter: `driver_id=eq.${driverId}`,
+      },
+      () => onChange(),
+    )
+    .on(
+      'postgres_changes',
+      {
+        event: '*',
+        schema: 'public',
+        table: 'hos_daily_logs',
+        filter: `driver_id=eq.${driverId}`,
+      },
+      () => onChange(),
+    )
+    .subscribe();
+
+  return () => {
+    supabase.removeChannel(channel);
+  };
+}
+
+/**
  * Calls back whenever this driver's thread changes.
  *
  * The filter is applied by the server, so a phone is not woken for every
@@ -937,10 +1261,39 @@ export async function markMessagesRead(driverId: string): Promise<void> {
    Training
    ======================================================================== */
 
-export async function loadMyCourses(driverId: string) {
+export type MyCourse = {
+  assignmentId: string;
+  courseId: string;
+  title: string;
+  /** What the driver reads. Null when the course is a file with no write-up. */
+  description: string | null;
+  /**
+   * Storage path of the material, not a URL — the bucket is private, so a
+   * stored URL would be dead within the hour. Null when there is no file.
+   */
+  contentPath: string | null;
+  lengthMinutes: number | null;
+  status: 'assigned' | 'in_progress' | 'completed' | 'overdue';
+  dueOn: string | null;
+  completedAt: string | null;
+  /** Seconds already spent on it, across every previous sitting. */
+  secondsSpent: number;
+};
+
+/**
+ * The courses this driver has been given.
+ *
+ * Reads course_assignments, not courses: a published course visible to the
+ * whole depot is one the driver COULD be given, and listing those would tell a
+ * driver they owe training nobody asked them to do. The join brings the course
+ * itself along so the list does not need a second round trip per row.
+ */
+export async function loadMyCourses(driverId: string): Promise<MyCourse[]> {
   const { data, error } = await supabase
     .from('course_assignments')
-    .select('id, status, due_on, completed_at, courses(id, title, length_minutes)')
+    .select(
+      'id, status, due_on, completed_at, seconds_spent, courses(id, title, description, content_url, length_minutes)',
+    )
     .eq('driver_id', driverId)
     .is('deleted_at', null)
     .order('due_on', { ascending: true, nullsFirst: false });
@@ -948,30 +1301,77 @@ export async function loadMyCourses(driverId: string) {
   if (error) throw new Error(error.message);
 
   return (data ?? []).map((a) => {
-    const course = a.courses as { id: string; title: string; length_minutes: number | null } | null;
+    const course = a.courses as {
+      id: string;
+      title: string;
+      description: string | null;
+      content_url: string | null;
+      length_minutes: number | null;
+    } | null;
     return {
       assignmentId: a.id,
       courseId: course?.id ?? '',
       title: course?.title ?? '',
+      description: course?.description ?? null,
+      contentPath: course?.content_url ?? null,
       lengthMinutes: course?.length_minutes ?? null,
       status: a.status,
       dueOn: a.due_on,
       completedAt: a.completed_at,
+      secondsSpent: a.seconds_spent ?? 0,
     };
   });
 }
 
-export async function setCourseProgress(
+/** A short-lived link to the material, minted when the driver opens it. */
+export async function courseContentUrl(storagePath: string | null): Promise<string | null> {
+  if (!storagePath) return null;
+  const { data, error } = await supabase.storage
+    .from('training')
+    // An hour, not a minute like documents: this one may be handed to the
+    // phone's own PDF or video viewer, which fetches it again as the driver
+    // scrolls or seeks.
+    .createSignedUrl(storagePath, 60 * 60);
+  if (error) throw new Error(error.message);
+  return data?.signedUrl ?? null;
+}
+
+/**
+ * Save how far through a course the driver is.
+ *
+ * `secondsSpent` is the running total, not a delta, and the caller starts from
+ * the value it loaded — so a save can only ever move it forward. A delta would
+ * double-count the moment a save was retried after a timeout, which on a phone
+ * in a yard with one bar is not rare.
+ *
+ * `startedAt` is written only when the row has none. Sending it on every resume
+ * would keep moving the moment the driver first opened the course, and "when
+ * did they start" is the one thing that row is for.
+ */
+export async function saveCourseProgress(
   assignmentId: string,
-  status: 'in_progress' | 'completed',
+  input: {
+    status: 'in_progress' | 'completed';
+    secondsSpent: number;
+    /** When this sitting began, from the caller — not now(); the save may be late. */
+    at: string;
+  },
 ): Promise<void> {
+  const existing = await supabase
+    .from('course_assignments')
+    .select('started_at')
+    .eq('id', assignmentId)
+    .single();
+  if (existing.error) throw new Error(existing.error.message);
+
   const { error } = await supabase
     .from('course_assignments')
     .update({
-      status,
-      ...(status === 'in_progress' ? { started_at: new Date().toISOString() } : {}),
-      // The table requires a completed_at on a completed row.
-      ...(status === 'completed' ? { completed_at: new Date().toISOString() } : {}),
+      status: input.status,
+      seconds_spent: Math.max(0, Math.round(input.secondsSpent)),
+      ...(existing.data.started_at ? {} : { started_at: input.at }),
+      // The table refuses a completed row with no completed_at.
+      ...(input.status === 'completed' ? { completed_at: input.at } : {}),
     })
     .eq('id', assignmentId);
   if (error) throw new Error(error.message);

@@ -1,5 +1,5 @@
-import React, { useMemo, useState } from 'react';
-import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { RefreshControl, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { BottomTabScreenProps } from '@react-navigation/bottom-tabs';
 import type { CompositeScreenProps } from '@react-navigation/native';
@@ -22,6 +22,7 @@ import {
   appBg,
   borderColor,
   cardBg,
+  cardBgSoft,
   dutyDrivingColor,
   dutyOffColor,
   dutyOnDutyColor,
@@ -34,7 +35,7 @@ import {
   textFaint,
   textMuted,
 } from '../../constans/Color';
-import { common, duty as t, screenTitles, vehiclePicker } from '../../constans/Constants';
+import { common, dayLog, duty as t, screenTitles } from '../../constans/Constants';
 import { heightPercentageToDP as hp, widthPercentageToDP as wp } from '../../utils';
 import { useShift } from '../../context/ShiftContext';
 import {
@@ -44,12 +45,14 @@ import {
   formatTime,
   isoDate,
   longestBreakMinutes,
+  minutesSince,
   onDutyMinutes,
   segmentsForDay,
 } from '../../helpers/duty';
 import { cycleDaysFor, recapFor, regulatorFrom } from '../../helpers/hosLimits';
 import { useAuth } from '../../context/AuthContext';
 import { useNotifications } from '../../context/NotificationContext';
+import { useNow } from '../../hooks/useNow';
 import type { DutyStatus } from '../../supabase/api';
 import type { DutyStackParams, TabParams } from '../../navigation/types';
 
@@ -78,9 +81,9 @@ const CHOICES: Array<{ status: DutyStatus; label: string; color: string; icon: s
  * Everything else is one tap away; this screen is the one they use twenty times
  * a shift, so it holds no scrolling-required content above the buttons.
  *
- * The status buttons are deliberately large and colour-coded to the graph
- * rows. Changing status is the single most consequential thing a driver does in
- * the app — it is their legal record — and a mis-tap is a false log.
+ * The status buttons are colour-coded to the graph rows. Changing status is
+ * the single most consequential thing a driver does in the app — it is their
+ * legal record — and a mis-tap is a false log.
  */
 export function DutyHomeScreen({ navigation }: Props) {
   const { state } = useAuth();
@@ -98,12 +101,22 @@ export function DutyHomeScreen({ navigation }: Props) {
   } = useShift();
 
   const { unreadCount } = useNotifications();
-  const [busy, setBusy] = useState<DutyStatus | null>(null);
   const [confirming, setConfirming] = useState(false);
   const [certifying, setCertifying] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
 
-  const today = useMemo(() => new Date(), []);
+  /*
+   * The clock, ticking on the minute.
+   *
+   * This used to be `useMemo(() => new Date(), [])` — read once when the
+   * screen mounted and never again. Everything below is a function of it: the
+   * segment the driver is in right now has no end time in the table, so the
+   * graph draws it up to "now", and the three totals measure up to "now" too.
+   * Frozen, a driver who came on duty at 09:00 and glanced at the screen at
+   * 11:00 saw two hours of work reported as nothing at all.
+   */
+  const now = useNow();
+  const today = now;
 
   /*
    * Which day is on screen. Today by default, and never later than today —
@@ -112,7 +125,29 @@ export function DutyHomeScreen({ navigation }: Props) {
    */
   const [viewDate, setViewDate] = useState(today);
   const viewKey = isoDate(viewDate);
-  const isToday = viewKey === isoDate(today);
+  const todayKey = isoDate(today);
+  const isToday = viewKey === todayKey;
+
+  /*
+   * Follow the day over midnight.
+   *
+   * A phone in a cradle is open across the day boundary every night shift, and
+   * "today" is no longer fixed at mount. Without this the screen would keep
+   * showing the day that just ended, which is not merely stale: past days hide
+   * the status buttons — deliberately, because a driver cannot go on duty in
+   * the past — so at 00:00 the driver would lose the ability to change status
+   * with nothing on screen to explain why.
+   *
+   * Only moved when they were watching today. A driver who has paged back to
+   * review Tuesday should stay on Tuesday.
+   */
+  const lastTodayKey = useRef(todayKey);
+  useEffect(() => {
+    if (todayKey === lastTodayKey.current) return;
+    const wasWatchingToday = viewKey === lastTodayKey.current;
+    lastTodayKey.current = todayKey;
+    if (wasWatchingToday) setViewDate(new Date());
+  }, [todayKey, viewKey]);
 
   const segments = useMemo(
     () => segmentsForDay(events, viewDate, today),
@@ -144,8 +179,9 @@ export function DutyHomeScreen({ navigation }: Props) {
     }
     return recapFor(book, segments, days);
   }, [isToday, profile?.regulator, events, segments, today]);
-  const now = currentStatus(events);
-  const activeStatus = now?.status ?? null;
+  const activeEvent = currentStatus(events);
+  const activeStatus = activeEvent?.status ?? null;
+  const activeChoice = CHOICES.find(c => c.status === activeStatus) ?? CHOICES[0];
 
   async function pick(status: DutyStatus) {
     if (status === activeStatus) return;
@@ -157,14 +193,11 @@ export function DutyHomeScreen({ navigation }: Props) {
       return;
     }
 
-    setBusy(status);
     setFailure(null);
     try {
       await changeStatus(status);
     } catch {
       setFailure(t.changeFailed);
-    } finally {
-      setBusy(null);
     }
   }
 
@@ -185,14 +218,10 @@ export function DutyHomeScreen({ navigation }: Props) {
       <ScrollView
         contentContainerStyle={styles.body}
         showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
         refreshControl={
           <RefreshControl refreshing={loading} onRefresh={refresh} tintColor={accentColor} />
         }>
-        {/*
-          The bell sits here, not only in Me. This is the screen a driver has
-          open all shift; a notification list they have to go looking for in
-          another tab is one they will not see.
-        */}
         <View
           style={[
             BaseStyle.flexDirectionRow,
@@ -200,19 +229,20 @@ export function DutyHomeScreen({ navigation }: Props) {
             BaseStyle.justifyContentSpaceBetween,
             styles.topBar,
           ]}>
-          <Text style={[fontStyle.fontSizeLargeX, fontStyle.fontWeightMedium1x, styles.greeting]}>
-            {profile ? profile.firstName : ''}
-          </Text>
+          <View>
+            <Text style={[fontStyle.fontSizeSmall2x, styles.eyebrow]}>{t.title.toUpperCase()}</Text>
+            <Text style={[fontStyle.fontSizeLargeX, fontStyle.fontWeightMedium1x, styles.greeting]}>
+              {profile ? t.hello(profile.firstName) : ''}
+            </Text>
+          </View>
 
-          <Pressable
+          <TouchableOpacity
             accessibilityRole="button"
             accessibilityLabel={screenTitles.notifications}
+            activeOpacity={0.75}
+            delayPressIn={0}
             onPress={() => navigation.navigate('Notifications')}
-            style={({ pressed }) => [
-              BaseStyle.alignJustifyCenter,
-              styles.bell,
-              pressed && styles.pressed,
-            ]}>
+            style={[BaseStyle.alignJustifyCenter, styles.bell]}>
             <AppIcon name={unreadCount > 0 ? icons.bellActive : icons.bell} size={20} color={textDark} />
             {unreadCount > 0 && (
               <View style={[BaseStyle.alignJustifyCenter, styles.bellBadge]}>
@@ -226,61 +256,62 @@ export function DutyHomeScreen({ navigation }: Props) {
                 </Text>
               </View>
             )}
-          </Pressable>
+          </TouchableOpacity>
         </View>
 
-        {/* ------------------------------------------------------- the truck */}
-        <Pressable
-          accessibilityRole="button"
-          onPress={() => navigation.navigate('VehiclePicker')}
-          style={({ pressed }) => [
-            BaseStyle.flexDirectionRow,
-            BaseStyle.alignItemsCenter,
-            BaseStyle.borderRadius10,
-            styles.truckCard,
-            pressed && styles.pressed,
-          ]}>
-          <View style={[BaseStyle.alignJustifyCenter, styles.truckBadge]}>
-            <AppIcon name={icons.truck} size={20} color={accentColor} />
-          </View>
-          <View style={BaseStyle.flex}>
-            <Text style={[fontStyle.fontSizeExtraSmall, styles.truckLabel]}>
-              {vehicle ? vehiclePicker.current.toUpperCase() : ''}
-            </Text>
-            <Text
-              style={[fontStyle.fontSizeNormal2x, fontStyle.fontWeightMedium, styles.truckName]}>
-              {vehicle ? vehicle.name : t.noVehicle}
-            </Text>
-            {Boolean(vehicle) && (
-              <Text style={[fontStyle.fontSizeSmall1x, styles.truckPlate]}>{vehicle!.plate}</Text>
-            )}
-          </View>
-          <AppIcon name={icons.forward} size={20} color={textFaint} />
-        </Pressable>
+        {/* Status + truck in one place: this is what the driver came here to see. */}
+        <View style={styles.hero}>
+          <View style={[styles.heroBar, { backgroundColor: activeChoice.color }]} />
+          <View style={styles.heroBody}>
+            <View style={BaseStyle.flex}>
+              <Text style={[fontStyle.fontSizeSmall1x, fontStyle.fontWeightMedium, styles.heroKicker]}>
+                {t.title}
+              </Text>
+              <Text style={[fontStyle.fontSizeLargeX, fontStyle.fontWeightMedium1x, styles.heroStatus]}>
+                {activeChoice.label}
+              </Text>
+              {/*
+                The elapsed time next to the start time is what makes the
+                screen visibly live. A 24 hour graph grows by a
+                fourteen-hundredth of its width in a minute, which is true but
+                invisible; "1:23" changing to "1:24" is the same fact a driver
+                can actually see.
+              */}
+              {Boolean(activeEvent) && (
+                <Text style={[fontStyle.fontSizeSmall2x, styles.heroSince]}>
+                  {`${t.since(formatTime(activeEvent!.startedAt))} ${t.elapsed(
+                    formatClock(minutesSince(activeEvent!.startedAt, now)),
+                  )}`}
+                </Text>
+              )}
+            </View>
 
-        {/* ------------------------------------------------- current status */}
-        <View style={[BaseStyle.alignItemsCenter, styles.nowBlock]}>
-          <Text style={[fontStyle.fontSizeSmall2x, fontStyle.fontWeightMedium, styles.nowLabel]}>
-            {t.title.toUpperCase()}
-          </Text>
-          <Text style={[fontStyle.fontSizeLarge2x, fontStyle.fontWeightMedium1x, styles.nowValue]}>
-            {activeStatus
-              ? CHOICES.find(c => c.status === activeStatus)?.label ?? t.status.off
-              : t.status.off}
-          </Text>
-          {Boolean(now) && (
-            <Text style={[fontStyle.fontSizeSmall2x, styles.nowSince]}>
-              {t.since(formatTime(now!.startedAt))}
-            </Text>
-          )}
+            <TouchableOpacity
+              accessibilityRole="button"
+              activeOpacity={0.75}
+              delayPressIn={0}
+              onPress={() => navigation.navigate('VehiclePicker')}
+              style={[BaseStyle.flexDirectionRow, BaseStyle.alignItemsCenter, styles.truckChip]}>
+              <View style={[BaseStyle.alignJustifyCenter, styles.truckBadge]}>
+                <AppIcon name={icons.truck} size={16} color={accentColor} />
+              </View>
+              <View style={styles.truckMeta}>
+                <Text
+                  numberOfLines={1}
+                  style={[fontStyle.fontSizeSmall2x, fontStyle.fontWeightMedium, styles.truckName]}>
+                  {vehicle ? vehicle.name : t.noVehicle}
+                </Text>
+                {Boolean(vehicle) && (
+                  <Text numberOfLines={1} style={[fontStyle.fontSizeExtraSmall, styles.truckPlate]}>
+                    {vehicle!.plate}
+                  </Text>
+                )}
+              </View>
+              <AppIcon name={icons.forward} size={14} color={textFaint} />
+            </TouchableOpacity>
+          </View>
         </View>
 
-        {/*
-          Only on today. A status change records the time it is tapped, so
-          offering these while a past day is on screen would look like editing
-          that day and would actually write to this one. Correcting a past log
-          is a request to the office — see RequestCorrection.
-        */}
         {!isToday && (
           <Text style={[fontStyle.fontSizeSmall2x, styles.pastNote]}>{t.pastDayNote}</Text>
         )}
@@ -288,41 +319,44 @@ export function DutyHomeScreen({ navigation }: Props) {
         <View
           style={[
             BaseStyle.flexDirectionRow,
-            BaseStyle.flexWrap,
+            BaseStyle.justifyContentSpaceBetween,
             styles.grid,
             !isToday && styles.hidden,
           ]}>
           {CHOICES.map(choice => {
             const active = choice.status === activeStatus;
             return (
-              <Pressable
+              <TouchableOpacity
                 key={choice.status}
                 accessibilityRole="button"
                 accessibilityState={{ selected: active }}
-                disabled={busy !== null}
+                activeOpacity={0.82}
+                delayPressIn={0}
                 onPress={() => pick(choice.status)}
-                style={({ pressed }) => [
+                style={[
                   BaseStyle.alignJustifyCenter,
-                  BaseStyle.borderRadius10,
                   styles.choice,
-                  active && { backgroundColor: choice.color, borderColor: choice.color },
-                  pressed && styles.pressed,
+                  active && { backgroundColor: choice.color },
                 ]}>
-                <AppIcon
-                  name={choice.icon}
-                  size={26}
-                  color={active ? onAccent : choice.color}
-                />
-                <Text
+                <View
                   style={[
-                    fontStyle.fontSizeSmall2x,
+                    BaseStyle.alignJustifyCenter,
+                    styles.choiceIcon,
+                    { backgroundColor: active ? 'rgba(255,255,255,0.2)' : `${choice.color}22` },
+                  ]}>
+                  <AppIcon name={choice.icon} size={20} color={active ? onAccent : choice.color} />
+                </View>
+                <Text
+                  numberOfLines={2}
+                  style={[
+                    fontStyle.fontSizeExtraSmall,
                     fontStyle.fontWeightMedium,
                     styles.choiceLabel,
                     { color: active ? onAccent : textDark },
                   ]}>
                   {choice.label}
                 </Text>
-              </Pressable>
+              </TouchableOpacity>
             );
           })}
         </View>
@@ -332,7 +366,6 @@ export function DutyHomeScreen({ navigation }: Props) {
             style={[
               BaseStyle.flexDirectionRow,
               BaseStyle.alignItemsCenter,
-              BaseStyle.borderRadius8,
               styles.failure,
             ]}>
             <AppIcon name={icons.alert} size={17} color={accentColor} />
@@ -342,26 +375,50 @@ export function DutyHomeScreen({ navigation }: Props) {
           </View>
         )}
 
-        {/* ------------------------------------------------------ the day */}
-        <View style={styles.picker}>
-          <DayPicker date={viewDate} earliest={earliestDate} onChange={setViewDate} />
-        </View>
-
-        {viewKey === earliestDate && (
-          <Text style={[fontStyle.fontSizeExtraSmall, styles.oldest]}>{t.oldestLoaded}</Text>
-        )}
-
-        <View style={[BaseStyle.borderRadius10, styles.card]}>
-          <DutyGraph segments={segments} />
-        </View>
-
-        {/* Under the grid, the way an ELD stacks them: the record above, the
-            decision below. Only for today — see the recap memo. */}
         {recap && (
           <View style={styles.recap}>
             <HosRecap recap={recap} />
           </View>
         )}
+
+        <View style={styles.logCard}>
+          <DayPicker embedded date={viewDate} earliest={earliestDate} onChange={setViewDate} />
+          {viewKey === earliestDate && (
+            <Text style={[fontStyle.fontSizeExtraSmall, styles.oldest]}>{t.oldestLoaded}</Text>
+          )}
+          <View style={styles.graph}>
+            <DutyGraph segments={segments} />
+          </View>
+
+          {/*
+            The way into the day log, which had none. The graph shows the shape
+            of a day; a driver who thinks it is wrong needs the rows behind it,
+            with the times, and somewhere to challenge one.
+          */}
+          <TouchableOpacity
+            accessibilityRole="button"
+            activeOpacity={0.75}
+            delayPressIn={0}
+            disabled={segments.length === 0}
+            onPress={() => navigation.navigate('DayLog', { date: viewKey })}
+            style={[
+              BaseStyle.flexDirectionRow,
+              BaseStyle.alignItemsCenter,
+              styles.logLink,
+              segments.length === 0 && styles.logLinkOff,
+            ]}>
+            <AppIcon name={icons.logbook} size={17} color={accentColor} />
+            <Text
+              style={[
+                fontStyle.fontSizeSmall2x,
+                fontStyle.fontWeightMedium,
+                styles.logLinkText,
+              ]}>
+              {dayLog.events}
+            </Text>
+            <AppIcon name={icons.forward} size={15} color={textFaint} />
+          </TouchableOpacity>
+        </View>
 
         <View style={[BaseStyle.flexDirectionRow, styles.tiles]}>
           <StatTile
@@ -374,6 +431,7 @@ export function DutyHomeScreen({ navigation }: Props) {
             label={t.onDutyToday}
             value={formatClock(onDutyMinutes(segments))}
             icon="briefcase-outline"
+            tone={dutyOnDutyColor}
           />
           <StatTile
             label={t.longestBreak}
@@ -382,13 +440,11 @@ export function DutyHomeScreen({ navigation }: Props) {
           />
         </View>
 
-        {/* ---------------------------------------------------- certify */}
         {certified ? (
           <View
             style={[
               BaseStyle.flexDirectionRow,
               BaseStyle.alignItemsCenter,
-              BaseStyle.borderRadius10,
               styles.certified,
             ]}>
             <AppIcon name={icons.checkCircle} size={20} color={okColor} />
@@ -426,17 +482,20 @@ export function DutyHomeScreen({ navigation }: Props) {
 const styles = StyleSheet.create({
   ground: { backgroundColor: appBg },
   body: { paddingHorizontal: spacings.xxLarge, paddingBottom: spacings.ExtraLarge },
-  pressed: { opacity: 0.75 },
 
-  topBar: { paddingTop: spacings.large },
-  greeting: { color: textDark },
+  topBar: { paddingTop: spacings.xxLarge },
+  eyebrow: { color: textFaint, letterSpacing: 1.2 },
+  greeting: { color: textDark, marginTop: spacings.xxsmall },
   bell: {
-    width: wp(11),
-    height: wp(11),
-    borderRadius: wp(5.5),
+    width: 44,
+    height: 44,
+    borderRadius: 14,
     backgroundColor: cardBg,
-    borderWidth: 1,
-    borderColor,
+    shadowColor,
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 2,
   },
   bellBadge: {
     position: 'absolute',
@@ -452,76 +511,115 @@ const styles = StyleSheet.create({
   },
   bellBadgeText: { color: onAccent },
 
-  truckCard: {
+  hero: {
     backgroundColor: cardBg,
-    borderWidth: 1,
-    borderColor,
-    padding: spacings.large,
-    marginTop: spacings.large,
+    borderRadius: 20,
+    marginTop: spacings.xxLarge,
+    overflow: 'hidden',
+    shadowColor,
+    shadowOpacity: 0.08,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 4,
+  },
+  heroBar: { height: 4 },
+  heroBody: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: spacings.xxLarge,
+    paddingVertical: spacings.xLarge,
+  },
+  heroKicker: { color: textFaint, letterSpacing: 0.4 },
+  heroStatus: { color: textDark, marginTop: spacings.xxsmall },
+  heroSince: { color: textMuted, marginTop: spacings.small },
+  truckChip: {
+    maxWidth: '48%',
+    backgroundColor: cardBgSoft,
+    borderRadius: 14,
+    paddingVertical: spacings.normal,
+    paddingHorizontal: spacings.normalx,
   },
   truckBadge: {
-    width: wp(11),
-    height: wp(11),
-    borderRadius: wp(5.5),
-    backgroundColor: accentSoft,
-    marginRight: spacings.large,
+    width: 32,
+    height: 32,
+    borderRadius: 10,
+    backgroundColor: cardBg,
   },
-  truckLabel: { color: textFaint },
+  truckMeta: { flexShrink: 1, marginHorizontal: spacings.normal },
   truckName: { color: textDark },
   truckPlate: { color: textMuted, marginTop: spacings.xxsmall },
 
-  nowBlock: { paddingVertical: spacings.xxxLarge },
-  nowLabel: { color: textFaint, letterSpacing: 1.3 },
-  nowValue: { color: textDark, marginTop: spacings.normal },
-  nowSince: { color: textMuted, marginTop: spacings.normal },
-
-  grid: { justifyContent: 'space-between' },
+  grid: { marginTop: spacings.large },
   choice: {
-    width: '48%',
-    minHeight: hp(12),
+    width: '23.5%',
+    minHeight: hp(11),
     backgroundColor: cardBg,
-    borderWidth: 1.5,
-    borderColor,
-    marginBottom: spacings.large,
+    borderRadius: 16,
+    paddingVertical: spacings.large,
+    paddingHorizontal: spacings.xsmall,
+    shadowColor,
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 2,
   },
-  choiceLabel: { marginTop: spacings.normalx },
+  choiceIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+  },
+  choiceLabel: { marginTop: spacings.normal, textAlign: 'center' },
 
   failure: {
     backgroundColor: accentSoft,
+    borderRadius: 14,
     paddingVertical: spacings.large,
     paddingHorizontal: spacings.large,
-    marginBottom: spacings.large,
+    marginTop: spacings.large,
   },
   failureText: { color: accentColor, marginLeft: spacings.normalx, flex: 1 },
 
-  section: { color: textDark, marginTop: spacings.large, marginBottom: spacings.large },
-  card: {
+  recap: { marginTop: spacings.large },
+  logCard: {
     backgroundColor: cardBg,
-    borderWidth: 1,
-    borderColor,
-    padding: spacings.large,
+    borderRadius: 20,
+    padding: spacings.xxLarge,
+    marginTop: spacings.xxLarge,
     shadowColor,
-    shadowOpacity: 0.04,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 3 },
-    elevation: 1,
+    shadowOpacity: 0.08,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 4,
   },
-  picker: { marginTop: spacings.large, marginBottom: spacings.large },
-  oldest: { color: textMuted, marginBottom: spacings.normalx },
+  graph: {
+    marginTop: spacings.xLarge,
+    paddingTop: spacings.xLarge,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: borderColor,
+  },
+  oldest: { color: textMuted, marginTop: spacings.normal, textAlign: 'center' },
+  logLink: {
+    marginTop: spacings.xLarge,
+    paddingTop: spacings.large,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: borderColor,
+  },
+  logLinkText: { color: textDark, flex: 1, marginLeft: spacings.normalx },
+  logLinkOff: { opacity: 0.4 },
   pastNote: {
     color: textMuted,
-    marginBottom: spacings.large,
+    marginTop: spacings.large,
     lineHeight: hp(2.6),
   },
   // Kept mounted rather than unmounted, so switching days does not make the
   // whole screen jump as the grid reflows.
   hidden: { display: 'none' },
-  recap: { marginTop: spacings.large },
   tiles: { marginTop: spacings.large, marginBottom: spacings.xxLarge },
 
   certified: {
     backgroundColor: okSoft,
-    padding: spacings.large,
+    borderRadius: 16,
+    padding: spacings.xLarge,
   },
   certifiedText: { color: okColor, marginLeft: spacings.normalx },
   certifyHint: { color: textMuted, marginBottom: spacings.large, lineHeight: hp(2.7) },

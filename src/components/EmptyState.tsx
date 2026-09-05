@@ -4,7 +4,7 @@ import { AppIcon } from './AppIcon';
 import { CustomButton } from './CustomButton';
 import { BaseStyle } from '../constans/Style';
 import { spacings, style as fontStyle } from '../constans/Fonts';
-import { cardBg, textDark, textFaint, textMuted } from '../constans/Color';
+import { accentColor, accentSoft, textDark, textMuted } from '../constans/Color';
 import { heightPercentageToDP as hp, widthPercentageToDP as wp } from '../utils';
 
 /**
@@ -31,7 +31,7 @@ export function EmptyState({
     <View style={[BaseStyle.alignItemsCenter, styles.wrap]}>
       {Boolean(icon) && (
         <View style={[BaseStyle.alignJustifyCenter, styles.art]}>
-          <AppIcon name={icon as string} size={wp(9.5)} color={textFaint} />
+          <AppIcon name={icon as string} size={26} color={accentColor} />
         </View>
       )}
       <Text
@@ -59,15 +59,15 @@ export function EmptyState({
 }
 
 const styles = StyleSheet.create({
-  wrap: { paddingVertical: hp(6) },
+  wrap: { paddingVertical: hp(8) },
   art: {
-    width: wp(22),
-    height: wp(22),
-    borderRadius: wp(11),
-    backgroundColor: cardBg,
+    width: 56,
+    height: 56,
+    borderRadius: 16,
+    backgroundColor: accentSoft,
     marginBottom: spacings.xLarge,
   },
   title: { color: textDark, marginBottom: spacings.normalx },
-  hint: { color: textMuted, lineHeight: hp(2.8), maxWidth: wp(76) },
+  hint: { color: textMuted, lineHeight: hp(2.6), maxWidth: wp(76) },
   action: { marginTop: spacings.xxLarge, width: wp(60) },
 });

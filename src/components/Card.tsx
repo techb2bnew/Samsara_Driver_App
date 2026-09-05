@@ -1,15 +1,13 @@
 import React from 'react';
 import { StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
-import { BaseStyle } from '../constans/Style';
 import { spacings } from '../constans/Fonts';
-import { borderColor, cardBg, shadowColor } from '../constans/Color';
+import { cardBg, shadowColor } from '../constans/Color';
 
 /**
  * The raised surface everything sits on.
  *
- * One component so the border, radius and lift are identical everywhere. The
- * shadow is deliberately almost nothing — on a light ground a real shadow
- * reads as a smudge, and the border is what actually separates the card.
+ * Same radius and lift as the login card, so a tab screen and an auth screen
+ * feel like one product rather than two.
  */
 export function Card({
   children,
@@ -20,23 +18,19 @@ export function Card({
   style?: StyleProp<ViewStyle>;
   padded?: boolean;
 }) {
-  return (
-    <View style={[BaseStyle.borderRadius10, styles.card, padded && styles.padded, style]}>
-      {children}
-    </View>
-  );
+  return <View style={[styles.card, padded && styles.padded, style]}>{children}</View>;
 }
 
 const styles = StyleSheet.create({
   card: {
     backgroundColor: cardBg,
-    borderWidth: 1,
-    borderColor,
+    borderRadius: 20,
     shadowColor,
-    shadowOpacity: 0.04,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 3 },
-    elevation: 1,
+    shadowOpacity: 0.08,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 4,
+    overflow: 'hidden',
   },
-  padded: { padding: spacings.large },
+  padded: { padding: spacings.xxLarge },
 });

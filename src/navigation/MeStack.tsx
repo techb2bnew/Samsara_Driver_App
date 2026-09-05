@@ -7,6 +7,7 @@ import { MyFaultsScreen } from '../screens/me/MyFaultsScreen';
 import { MyViolationsScreen } from '../screens/me/MyViolationsScreen';
 import { MyDocumentsScreen } from '../screens/me/MyDocumentsScreen';
 import { TrainingScreen } from '../screens/me/TrainingScreen';
+import { CourseScreen } from '../screens/me/CourseScreen';
 import { RequestCorrectionScreen } from '../screens/me/RequestCorrectionScreen';
 import { SettingsScreen } from '../screens/me/SettingsScreen';
 import { NotificationsScreen } from '../screens/me/NotificationsScreen';
@@ -56,6 +57,11 @@ export function MeStack() {
         name="Training"
         component={TrainingScreen}
         options={{ title: screenTitles.training }}
+      />
+      <Stack.Screen
+        name="Course"
+        component={CourseScreen}
+        options={{ title: screenTitles.course }}
       />
       <Stack.Screen
         name="RequestCorrection"

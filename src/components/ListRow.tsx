@@ -3,14 +3,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { AppIcon, icons } from './AppIcon';
 import { BaseStyle } from '../constans/Style';
 import { spacings, style as fontStyle } from '../constans/Fonts';
-import {
-  accentSoft,
-  appBg,
-  borderColor,
-  textDark,
-  textFaint,
-  textMuted,
-} from '../constans/Color';
+import { accentColor, accentSoft, borderColor, textDark, textFaint, textMuted } from '../constans/Color';
 import { widthPercentageToDP as wp } from '../utils';
 
 /**
@@ -47,18 +40,13 @@ export function ListRow({
   const body = (
     <>
       {Boolean(icon) && (
-        <View
-          style={[
-            BaseStyle.alignJustifyCenter,
-            styles.badge,
-            Boolean(tone) && { backgroundColor: accentSoft },
-          ]}>
-          <AppIcon name={icon as string} size={19} color={tone ?? textMuted} />
+        <View style={[BaseStyle.alignJustifyCenter, styles.badge]}>
+          <AppIcon name={icon as string} size={18} color={tone ?? accentColor} />
         </View>
       )}
 
       <View style={BaseStyle.flex}>
-        <Text style={[fontStyle.fontSizeNormal1x, fontStyle.fontWeightThin1x, styles.title]}>
+        <Text style={[fontStyle.fontSizeNormal1x, fontStyle.fontWeightMedium, styles.title]}>
           {title}
         </Text>
         {Boolean(detail) && (
@@ -69,7 +57,8 @@ export function ListRow({
         )}
       </View>
 
-      {trailing ?? (Boolean(onPress) && <AppIcon name={icons.forward} size={18} color={textFaint} />)}
+      {trailing ??
+        (Boolean(onPress) && <AppIcon name={icons.forward} size={18} color={textFaint} />)}
     </>
   );
 
@@ -104,14 +93,14 @@ export function ListRow({
 }
 
 const styles = StyleSheet.create({
-  row: { paddingVertical: spacings.large, paddingHorizontal: spacings.large },
+  row: { paddingVertical: spacings.xLarge, paddingHorizontal: spacings.xxLarge },
   divided: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: borderColor },
   pressed: { opacity: 0.7 },
   badge: {
     width: wp(9.5),
     height: wp(9.5),
-    borderRadius: wp(4.75),
-    backgroundColor: appBg,
+    borderRadius: 12,
+    backgroundColor: accentSoft,
     marginRight: spacings.large,
   },
   title: { color: textDark },

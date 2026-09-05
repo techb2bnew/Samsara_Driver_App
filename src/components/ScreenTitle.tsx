@@ -24,7 +24,7 @@ export function ScreenTitle({ title, subtitle }: { title: string; subtitle?: str
 }
 
 const styles = StyleSheet.create({
-  wrap: { paddingTop: spacings.large, paddingBottom: spacings.xLarge },
+  wrap: { paddingTop: spacings.xxLarge, paddingBottom: spacings.xxLarge },
   title: { color: textDark },
-  subtitle: { color: textMuted, marginTop: spacings.normal, lineHeight: hp(2.8) },
+  subtitle: { color: textMuted, marginTop: spacings.normal, lineHeight: hp(2.6) },
 });

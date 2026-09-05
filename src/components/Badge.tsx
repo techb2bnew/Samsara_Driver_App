@@ -30,8 +30,8 @@ export function Badge({
 
 const styles = StyleSheet.create({
   pill: {
-    borderRadius: 6,
-    paddingHorizontal: spacings.normalx,
+    borderRadius: 99,
+    paddingHorizontal: spacings.large,
     paddingVertical: spacings.xsmall,
   },
 });

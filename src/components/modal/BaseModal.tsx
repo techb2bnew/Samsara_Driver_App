@@ -67,7 +67,6 @@ export function BaseModal({
         )}
         <Animated.View
           style={[
-            BaseStyle.borderRadius10,
             styles.card,
             {
               opacity: enter,
@@ -93,6 +92,7 @@ const styles = StyleSheet.create({
     width: wp(86),
     maxWidth: wp(100),
     padding: spacings.xxLarge,
+    borderRadius: 20,
     shadowColor,
     shadowOpacity: 0.2,
     shadowRadius: 24,

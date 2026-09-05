@@ -12,31 +12,6 @@ export type Database = {
   __InternalSupabase: {
     PostgrestVersion: "14.5"
   }
-  graphql_public: {
-    Tables: {
-      [_ in never]: never
-    }
-    Views: {
-      [_ in never]: never
-    }
-    Functions: {
-      graphql: {
-        Args: {
-          extensions?: Json
-          operationName?: string
-          query?: string
-          variables?: Json
-        }
-        Returns: Json
-      }
-    }
-    Enums: {
-      [_ in never]: never
-    }
-    CompositeTypes: {
-      [_ in never]: never
-    }
-  }
   public: {
     Tables: {
       alert_rules: {
@@ -173,6 +148,7 @@ export type Database = {
           org_id: string
           safety_event_id: string | null
           score_percent: number | null
+          seconds_spent: number
           started_at: string | null
           status: Database["public"]["Enums"]["assignment_status"]
           updated_at: string
@@ -190,6 +166,7 @@ export type Database = {
           org_id: string
           safety_event_id?: string | null
           score_percent?: number | null
+          seconds_spent?: number
           started_at?: string | null
           status?: Database["public"]["Enums"]["assignment_status"]
           updated_at?: string
@@ -207,6 +184,7 @@ export type Database = {
           org_id?: string
           safety_event_id?: string | null
           score_percent?: number | null
+          seconds_spent?: number
           started_at?: string | null
           status?: Database["public"]["Enums"]["assignment_status"]
           updated_at?: string
@@ -1512,6 +1490,9 @@ export type Database = {
         Row: {
           address: string | null
           arrived_at: string | null
+          arrived_distance_m: number | null
+          arrived_latitude: number | null
+          arrived_longitude: number | null
           contact_name: string | null
           contact_phone: string | null
           created_at: string
@@ -1534,6 +1515,9 @@ export type Database = {
         Insert: {
           address?: string | null
           arrived_at?: string | null
+          arrived_distance_m?: number | null
+          arrived_latitude?: number | null
+          arrived_longitude?: number | null
           contact_name?: string | null
           contact_phone?: string | null
           created_at?: string
@@ -1556,6 +1540,9 @@ export type Database = {
         Update: {
           address?: string | null
           arrived_at?: string | null
+          arrived_distance_m?: number | null
+          arrived_latitude?: number | null
+          arrived_longitude?: number | null
           contact_name?: string | null
           contact_phone?: string | null
           created_at?: string
@@ -2048,6 +2035,7 @@ export type Database = {
           org_id: string
           parts_cost_cents: number | null
           reference: string | null
+          requested_by_driver: string | null
           schedule_id: string | null
           started_at: string | null
           status: Database["public"]["Enums"]["work_order_status"]
@@ -2070,6 +2058,7 @@ export type Database = {
           org_id: string
           parts_cost_cents?: number | null
           reference?: string | null
+          requested_by_driver?: string | null
           schedule_id?: string | null
           started_at?: string | null
           status?: Database["public"]["Enums"]["work_order_status"]
@@ -2092,6 +2081,7 @@ export type Database = {
           org_id?: string
           parts_cost_cents?: number | null
           reference?: string | null
+          requested_by_driver?: string | null
           schedule_id?: string | null
           started_at?: string | null
           status?: Database["public"]["Enums"]["work_order_status"]
@@ -2119,6 +2109,13 @@ export type Database = {
             columns: ["org_id"]
             isOneToOne: false
             referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "work_orders_requested_by_driver_fkey"
+            columns: ["requested_by_driver"]
+            isOneToOne: false
+            referencedRelation: "drivers"
             referencedColumns: ["id"]
           },
           {
@@ -2163,10 +2160,12 @@ export type Database = {
         }
         Returns: string
       }
+      sign_on_to_vehicle: { Args: { p_vehicle_id: string }; Returns: string }
       storage_segment_uuid: {
         Args: { object_name: string; segment: number }
         Returns: string
       }
+      taken_vehicle_ids: { Args: never; Returns: string[] }
     }
     Enums: {
       alert_channel: "in_app" | "email" | "sms"
@@ -2341,9 +2340,6 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
-  graphql_public: {
-    Enums: {},
-  },
   public: {
     Enums: {
       alert_channel: ["in_app", "email", "sms"],

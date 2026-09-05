@@ -15,7 +15,7 @@ export const splash = {
 };
 
 /** How long the branded splash stays up, even if the session is already known. */
-export const SPLASH_MS = 4000;
+export const SPLASH_MS = 3000;
 
 export const common = {
   cancel: 'Cancel',
@@ -129,11 +129,16 @@ export const vehiclePicker = {
   select: 'Start shift',
   change: 'Change truck',
   current: 'You are on',
+  // Not "taken by Rahul": which truck is unavailable is a fact about the
+  // truck, and the app is not handed who is on it.
+  inUse: 'Another driver is on this truck',
+  inUseShort: 'In use',
   failed: 'That could not be saved.',
 };
 
 export const duty = {
   title: 'Duty status',
+  hello: (name) => `Hi, ${name}`,
   status: {
     off: 'Off duty',
     sleeper: 'Sleeper',
@@ -141,6 +146,8 @@ export const duty = {
     on_duty: 'On duty',
   },
   since: (time) => `Since ${time}`,
+  // Reads next to the start time: "Since 09:00 · 1:23".
+  elapsed: (clock) => `· ${clock}`,
   todayTitle: 'Today',
   today: 'Today',
   yesterday: 'Yesterday',
@@ -155,10 +162,11 @@ export const duty = {
   onDutyToday: 'On duty today',
   longestBreak: 'Longest break',
   recap: {
+    hoursLeft: 'Hours left',
     onDuty: 'On Duty',
     driving: 'Driving',
     breakIn: 'Break',
-    cycle: 'HOS Recap',
+    cycle: 'Cycle',
     noRegulator: 'Your office has not chosen a rule book, so these are not calculated.',
   },
   dispatchStatus: 'Dispatch status',
@@ -183,6 +191,9 @@ export const routeScreen = {
   openMap: 'Open map',
 
   title: 'My route',
+  nextStop: 'Next stop',
+  routeComplete: 'All stops done',
+  stops: 'Stops',
   empty: 'No route assigned',
   emptyHint: 'Your fleet office assigns routes. Nothing for you right now.',
   stopsDone: (done, total) => `${done} of ${total} stops`,
@@ -198,6 +209,7 @@ export const routeScreen = {
 
 export const inspect = {
   title: 'Inspection',
+  forms: 'Forms',
   preTrip: 'Pre-trip',
   postTrip: 'Post-trip',
   empty: 'No forms to fill in',
@@ -219,10 +231,98 @@ export const inspect = {
   reportAlone: 'Report a fault without a full inspection',
   myWorkOrders: 'Repairs on my truck',
   noWorkOrders: 'No repairs open',
+
+  // Filling a form in
+  formIntro: 'Check each item. Anything not right, mark it and say what is wrong.',
+  pass: 'OK',
+  fail: 'Not OK',
+  faultsFound: (n) => `${n} ${n === 1 ? 'fault' : 'faults'} to report`,
+  noFaults: 'Nothing wrong found',
+  answerAll: 'Check every item before you send this',
+  findingRequired: 'Say what is wrong with it',
+  noVehicle: 'Pick a truck before you file an inspection',
+  submitFailed: 'That was not sent. Nothing has been filed.',
+
+  // Asking the workshop to do the job
+  askWorkshop: 'Ask the workshop to book this in',
+  askWorkshopHint: 'The office sees the fault either way. Turn this on if it needs a job raising.',
+  workshopFailed: 'The fault was filed, but the repair request was not. Tell the office.',
+};
+
+export const repairs = {
+  title: 'Repairs on my truck',
+  subtitle: 'Jobs the workshop has open on the truck you are signed on to',
+  empty: 'No repairs on this truck',
+  emptyHint: 'Anything you or the office raises appears here with its status.',
+  mine: 'You asked for this',
+  open: 'Open',
+  assigned: 'With a mechanic',
+  in_progress: 'Being fixed',
+  completed: 'Done',
+  cancelled: 'Cancelled',
+  raisedOn: (date) => `Raised ${date}`,
+  doneOn: (date) => `Done ${date}`,
+
+  // Raising one
+  raise: 'Ask for a repair',
+  raiseHint: 'Something that needs doing on your truck — a service, a part, a fix',
+  raiseTitle: 'What needs doing',
+  raiseTitlePlaceholder: 'Air conditioning has stopped working',
+  raiseDetail: 'Anything else the workshop should know',
+  raiseDetailPlaceholder: 'Blows warm on both settings. Started this morning.',
+  raiseSubmit: 'Send to the workshop',
+  raiseToast: 'Sent to the workshop',
+  titleRequired: 'Say what needs doing',
+  raiseFailed: 'That was not sent.',
+  noVehicle: 'Pick a truck before you ask for a repair',
+};
+
+export const dayLog = {
+  subtitle: 'One day, as it was recorded',
+  events: 'What was recorded',
+  noEvents: 'Nothing recorded on this day',
+  noEventsHint: 'No duty status was set, so there is no log to show.',
+  totals: 'Totals',
+  correctThis: 'This is wrong — ask for a correction',
+  pending: 'Correction asked for',
+  eventAt: (time) => `from ${time}`,
+  queued: 'Not sent yet',
+  tapToCorrect: 'Tap a row if it is wrong',
+  // What happened to a correction the driver asked for. Rejected has to be
+  // said out loud — a driver who hears nothing assumes it is still waiting.
+  correctionPending: 'Correction asked for',
+  correctionRejected: 'Correction refused',
+};
+
+export const stopDetail = {
+  sequence: (n) => `Stop ${n}`,
+  address: 'Address',
+  window: 'Time window',
+  status: 'Status',
+  waiting: 'Not arrived yet',
+  openInMap: 'Show on the map',
+  markArrived: 'I have arrived',
+  arrivedConfirm: 'Mark this stop as arrived?',
+  arrivedHint: 'The office sees this straight away. The time recorded is now.',
+  alreadyArrived: 'You marked this stop arrived.',
+  noLocation: 'The office did not put a location on this stop.',
+
+  // The arrival check
+  checking: 'Checking where you are…',
+  tooFar: (away) => `You are ${away} from this stop. Get closer to mark it arrived.`,
+  closeEnough: (away) => `You are ${away} away.`,
+  // Not a refusal. A yard between two warehouses has no signal, and a driver
+  // standing at the right gate still has to be able to work.
+  noFix: 'Your position could not be checked, so this will be recorded as unverified.',
+  denied: 'Location is turned off for this app, so the arrival will be recorded as unverified.',
+  unverified: 'Recorded without a position check',
+  verified: (away) => `Checked — you were ${away} away`,
+  retryFix: 'Check again',
 };
 
 export const messages = {
   title: 'Messages',
+  office: 'Fleet office',
   empty: 'No messages',
   emptyHint: 'Messages from your fleet office appear here.',
   placeholder: 'Write a message',
@@ -264,6 +364,8 @@ export const correction = {
   sentToast: 'Request sent',
   reasonRequired: 'Say why — the office needs a reason to accept it',
   failed: 'That request was not sent.',
+  alreadyPending: 'You have already asked about this one. The office has not decided yet.',
+  wasRejected: 'The office refused your last request on this row. You can ask again with more detail.',
 };
 
 export const violations = {
@@ -309,6 +411,53 @@ export const modal = {
  * Separate from the tab labels above: a tab label has to fit under an icon and
  * stays one word, while a screen header can say what the screen actually is.
  */
+export const training = {
+  title: 'Training',
+  subtitle: 'Courses the office has given you',
+  empty: 'No courses assigned',
+  emptyHint: 'When the office gives you a course it appears here.',
+
+  // Section headings on the list
+  todo: 'To do',
+  done: 'Completed',
+
+  // Row detail
+  minutes: n => (n === null ? '' : `${n} min`),
+  dueBy: date => `Due by ${date}`,
+  noDeadline: 'No deadline',
+  overdue: 'Overdue',
+  notStarted: 'Not started',
+  inProgress: 'In progress',
+  completed: 'Completed',
+  completedOn: date => `Completed ${date}`,
+
+  // The course screen
+  aboutThis: 'About this course',
+  noDescription: 'The office did not add a write-up for this one.',
+  material: 'Material',
+  openFile: 'Open the file',
+  openHint: 'Opens in your phone. Come back here when you are done.',
+  openFailed: 'That file could not be opened.',
+  noFile: 'There is no file for this course — read the notes above.',
+
+  // The timer
+  start: 'Start',
+  resume: 'Resume',
+  pause: 'Pause',
+  timeLeft: 'Time left',
+  spentSoFar: 'Time spent',
+  // "3:20" — the shape a driver already reads on a phone.
+  clock: (m, sec) => `${m}:${String(sec).padStart(2, '0')}`,
+  gateHint: n => `You can mark this done after ${n} minutes.`,
+  readyHint: 'You have spent long enough on this. Mark it done when you are.',
+  markDone: 'Mark as done',
+  markDoneConfirm: 'Mark this course as done?',
+  markDoneHint: 'The office sees this as completed. You cannot undo it yourself.',
+  doneToast: 'Course marked as done',
+  saveFailed: 'That could not be saved. Your time is still on this phone.',
+  alreadyDone: 'You finished this course.',
+};
+
 export const screenTitles = {
   // Duty stack
   vehiclePicker: 'Select your truck',
@@ -324,6 +473,8 @@ export const screenTitles = {
   myRepairs: 'Repairs on my truck',
 
   // Me stack
+  course: 'Course',
+  raiseWorkOrder: 'Ask for a repair',
   myLogs: 'My logs',
   myInspections: 'My inspections',
   myFaults: 'My fault reports',
@@ -340,6 +491,7 @@ export const notifications = {
   empty: 'Nothing new',
   emptyHint: 'New routes, truck changes and messages from your office appear here.',
   markAllRead: 'Mark all read',
+  unread: (n) => (n === 1 ? '1 new' : `${n} new`),
   newMessage: 'New message',
   newMessageBody: 'Your fleet office sent you a message.',
   newRoute: 'New route',

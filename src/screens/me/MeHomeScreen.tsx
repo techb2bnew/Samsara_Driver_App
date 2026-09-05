@@ -22,7 +22,6 @@ import {
   textMuted,
 } from '../../constans/Color';
 import { me as t, modal, notifications as n, screenTitles } from '../../constans/Constants';
-import { widthPercentageToDP as wp } from '../../utils';
 import { useAuth } from '../../context/AuthContext';
 import { useShift } from '../../context/ShiftContext';
 import { useNotifications } from '../../context/NotificationContext';
@@ -220,9 +219,9 @@ const styles = StyleSheet.create({
   ground: { backgroundColor: appBg },
   body: { paddingHorizontal: spacings.xxLarge, paddingBottom: spacings.ExtraLarge },
   avatar: {
-    width: wp(15),
-    height: wp(15),
-    borderRadius: wp(7.5),
+    width: 56,
+    height: 56,
+    borderRadius: 16,
     backgroundColor: accentSoft,
     marginRight: spacings.large,
   },

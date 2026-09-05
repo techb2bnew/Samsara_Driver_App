@@ -74,6 +74,17 @@ export function segmentsForDay(
   }));
 }
 
+/**
+ * Whole minutes from an event's start until now.
+ *
+ * Floored, not rounded: a driver four minutes into a shift should read four,
+ * not five. Clamped at zero because an event queued on a phone whose clock is
+ * slightly ahead of the server's would otherwise show a negative duration.
+ */
+export function minutesSince(iso: string, now: Date = new Date()): number {
+  return Math.max(0, Math.floor((now.getTime() - new Date(iso).getTime()) / 60_000));
+}
+
 /** Minutes in each band. */
 export function totals(segments: Segment[]): Record<Band, number> {
   const out: Record<Band, number> = { off: 0, sleeper: 0, driving: 0, on_duty: 0 };

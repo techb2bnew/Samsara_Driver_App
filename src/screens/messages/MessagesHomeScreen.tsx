@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
-  KeyboardAvoidingView,
+  Keyboard,
   Platform,
   Pressable,
   StyleSheet,
@@ -10,24 +10,26 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
-import { AppIcon, EmptyState, ScreenTitle, icons } from '../../components';
+import { AppIcon, EmptyState, icons } from '../../components';
 import { BaseStyle } from '../../constans/Style';
 import { spacings, style as fontStyle } from '../../constans/Fonts';
 import {
   accentColor,
+  accentSoft,
   appBg,
   borderColor,
   cardBg,
+  cardBgSoft,
   dangerColor,
   disabledBg,
   onAccent,
   placeholderColor,
+  shadowColor,
   textDark,
   textFaint,
-  textMuted,
 } from '../../constans/Color';
 import { messages as t } from '../../constans/Constants';
 import { heightPercentageToDP as hp, widthPercentageToDP as wp } from '../../utils';
@@ -39,6 +41,42 @@ import { useAuth } from '../../context/AuthContext';
 function timeOf(iso: string): string {
   const d = new Date(iso);
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
+
+/**
+ * How far the composer must rise so it sits on the keyboard, not in it.
+ *
+ * iOS: keyboard height is from the bottom of the screen, and this screen
+ * already sits on the tab bar — the lift is the difference.
+ *
+ * Android is edge-to-edge: the IME height does not include the nav bar, but
+ * `tabBarHeight` does. Subtracting the nav bar twice left the field half
+ * behind the keyboard, so Android only subtracts the tab bar's own height.
+ */
+function useComposerLift(tabBarHeight: number, bottomInset: number): number {
+  const [lift, setLift] = useState(0);
+
+  useEffect(() => {
+    const covered =
+      Platform.OS === 'android' ? Math.max(0, tabBarHeight - bottomInset) : tabBarHeight;
+
+    const show = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
+      event => {
+        setLift(Math.max(0, event.endCoordinates.height - covered));
+      },
+    );
+    const hide = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide',
+      () => setLift(0),
+    );
+    return () => {
+      show.remove();
+      hide.remove();
+    };
+  }, [tabBarHeight, bottomInset]);
+
+  return lift;
 }
 
 /**
@@ -72,16 +110,13 @@ export function MessagesHomeScreen() {
   const [thread, setThread] = useState<Message[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  /*
-   * The composer is pinned above the keyboard, and the keyboard's height is
-   * measured from the bottom of the SCREEN — not from the bottom of this
-   * screen, which sits above the tab bar. Without this offset the composer
-   * ends up hidden behind the keyboard by exactly the height of the tab bar.
-   */
   const tabBarHeight = useBottomTabBarHeight();
+  const { bottom: bottomInset } = useSafeAreaInsets();
+  const lift = useComposerLift(tabBarHeight, bottomInset);
 
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
+  const [focused, setFocused] = useState(false);
   const marked = useRef(false);
 
   const load = useCallback(async () => {
@@ -150,15 +185,18 @@ export function MessagesHomeScreen() {
   return (
     <SafeAreaView style={[BaseStyle.flex, styles.ground]} edges={['top']}>
       <View style={styles.head}>
-        <ScreenTitle title={t.title} />
+        <View style={[BaseStyle.alignJustifyCenter, styles.officeMark]}>
+          <AppIcon name={icons.messages} size={18} color={accentColor} />
+        </View>
+        <View style={BaseStyle.flex}>
+          <Text style={[fontStyle.fontSizeSmall2x, styles.eyebrow]}>{t.title.toUpperCase()}</Text>
+          <Text style={[fontStyle.fontSizeLargeX, fontStyle.fontWeightMedium1x, styles.office]}>
+            {t.office}
+          </Text>
+        </View>
       </View>
 
-      <KeyboardAvoidingView
-        style={BaseStyle.flex}
-        // Android resizes the window itself (adjustResize in the manifest), so
-        // adding padding there would double-count and push the thread up.
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? tabBarHeight : 0}>
+      <View style={[BaseStyle.flex, { paddingBottom: lift }]}>
         {loading ? (
           <View style={[BaseStyle.flex, BaseStyle.alignJustifyCenter]}>
             <ActivityIndicator color={accentColor} />
@@ -173,37 +211,52 @@ export function MessagesHomeScreen() {
             inverted
             keyExtractor={m => m.id}
             contentContainerStyle={styles.list}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="interactive"
             showsVerticalScrollIndicator={false}
-            renderItem={({ item }) => {
+            renderItem={({ item, index }) => {
               const mine = item.direction === 'from_driver';
+              const previous = data[index - 1];
+              const clustered =
+                previous !== undefined && previous.direction === item.direction;
               return (
                 <View
                   style={[
-                    styles.bubbleWrap,
                     mine ? BaseStyle.alignSelfEnd : BaseStyle.alignSelfStart,
+                    styles.bubbleWrap,
+                    clustered && styles.clustered,
                   ]}>
-                  <View
-                    style={[
-                      BaseStyle.borderRadius10,
-                      styles.bubble,
-                      mine ? styles.mine : styles.theirs,
-                    ]}>
+                  <View style={[BaseStyle.flexDirectionRow, styles.bubbleRow]}>
+                    {!mine && (
+                      <View
+                        style={[
+                          BaseStyle.alignJustifyCenter,
+                          styles.avatar,
+                          clustered && styles.avatarHidden,
+                        ]}>
+                        <AppIcon name={icons.messages} size={14} color={accentColor} />
+                      </View>
+                    )}
+                    <View style={[styles.bubble, mine ? styles.mine : styles.theirs]}>
+                      <Text
+                        style={[
+                          fontStyle.fontSizeNormal1x,
+                          mine ? styles.mineText : styles.theirsText,
+                        ]}>
+                        {item.body}
+                      </Text>
+                    </View>
+                  </View>
+                  {!clustered && (
                     <Text
                       style={[
-                        fontStyle.fontSizeNormal1x,
-                        mine ? styles.mineText : styles.theirsText,
+                        fontStyle.fontSizeExtraSmall,
+                        styles.time,
+                        mine ? styles.timeMine : styles.timeTheirs,
                       ]}>
-                      {item.body}
+                      {timeOf(item.sentAt)}
                     </Text>
-                  </View>
-                  <Text
-                    style={[
-                      fontStyle.fontSizeExtraSmall,
-                      styles.time,
-                      mine ? BaseStyle.alignSelfEnd : BaseStyle.alignSelfStart,
-                    ]}>
-                    {timeOf(item.sentAt)}
-                  </Text>
+                  )}
                 </View>
               );
             }}
@@ -217,15 +270,37 @@ export function MessagesHomeScreen() {
           </View>
         )}
 
-        <View style={[BaseStyle.flexDirectionRow, BaseStyle.alignItemsCenter, styles.composer]}>
-          <TextInput
-            value={draft}
-            onChangeText={setDraft}
-            placeholder={t.placeholder}
-            placeholderTextColor={placeholderColor}
-            multiline
-            style={[BaseStyle.flex, fontStyle.fontSizeNormal1x, styles.input]}
-          />
+        <View
+          style={[
+            BaseStyle.flexDirectionRow,
+            BaseStyle.alignItemsFlexEnd,
+            styles.composer,
+            lift > 0 && styles.composerRaised,
+          ]}>
+          <View
+            style={[
+              BaseStyle.flex,
+              BaseStyle.flexDirectionRow,
+              BaseStyle.alignItemsCenter,
+              styles.field,
+              focused && styles.fieldFocus,
+            ]}>
+            <TextInput
+              value={draft}
+              onChangeText={setDraft}
+              placeholder={t.placeholder}
+              placeholderTextColor={placeholderColor}
+              multiline
+              onFocus={() => setFocused(true)}
+              onBlur={() => setFocused(false)}
+              style={[
+                BaseStyle.flex,
+                fontStyle.fontSizeNormal1x,
+                styles.input,
+                Platform.OS === 'android' ? styles.inputAndroid : null,
+              ]}
+            />
+          </View>
           <Pressable
             accessibilityRole="button"
             accessibilityLabel={t.send}
@@ -239,56 +314,106 @@ export function MessagesHomeScreen() {
             {sending ? (
               <ActivityIndicator color={onAccent} size="small" />
             ) : (
-              <AppIcon name={icons.send} size={18} color={onAccent} />
+              <AppIcon name={icons.send} size={16} color={onAccent} />
             )}
           </Pressable>
         </View>
-      </KeyboardAvoidingView>
+      </View>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   ground: { backgroundColor: appBg },
-  head: { paddingHorizontal: spacings.xxLarge },
+  head: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: spacings.xxLarge,
+    paddingTop: spacings.xxLarge,
+    paddingBottom: spacings.large,
+  },
+  officeMark: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    backgroundColor: accentSoft,
+    marginRight: spacings.large,
+  },
+  eyebrow: { color: textFaint, letterSpacing: 1.2 },
+  office: { color: textDark, marginTop: spacings.xxsmall },
   list: { paddingHorizontal: spacings.xxLarge, paddingBottom: spacings.large },
 
-  bubbleWrap: { maxWidth: wp(78), marginBottom: spacings.large },
-  bubble: { paddingVertical: spacings.large, paddingHorizontal: spacings.large },
-  mine: { backgroundColor: accentColor, borderBottomRightRadius: 3 },
+  bubbleWrap: {
+    maxWidth: wp(78),
+    marginBottom: spacings.large,
+  },
+  clustered: { marginBottom: spacings.small },
+  bubbleRow: { alignItems: 'flex-end' },
+  avatar: {
+    width: 28,
+    height: 28,
+    borderRadius: 10,
+    backgroundColor: accentSoft,
+    marginRight: spacings.normal,
+  },
+  avatarHidden: { opacity: 0 },
+  bubble: {
+    maxWidth: wp(70),
+    paddingVertical: spacings.large,
+    paddingHorizontal: spacings.xLarge,
+    borderRadius: 18,
+  },
+  mine: { backgroundColor: accentColor, borderBottomRightRadius: 6 },
   theirs: {
     backgroundColor: cardBg,
-    borderWidth: 1,
-    borderColor,
-    borderBottomLeftRadius: 3,
+    borderBottomLeftRadius: 6,
+    shadowColor,
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 2,
   },
   mineText: { color: onAccent, lineHeight: hp(2.7) },
   theirsText: { color: textDark, lineHeight: hp(2.7) },
   time: { color: textFaint, marginTop: spacings.xsmall },
+  timeMine: { alignSelf: 'flex-end' },
+  timeTheirs: { marginLeft: 36 },
 
   error: { paddingHorizontal: spacings.xxLarge, paddingBottom: spacings.normalx },
   errorText: { color: dangerColor, marginLeft: spacings.normal, flex: 1 },
 
   composer: {
+    paddingHorizontal: spacings.xxLarge,
+    paddingTop: spacings.large,
+    paddingBottom: spacings.large,
+    backgroundColor: appBg,
+  },
+  composerRaised: { paddingBottom: spacings.normal },
+  field: {
+    minHeight: hp(5.6),
+    maxHeight: hp(14),
+    backgroundColor: cardBgSoft,
+    borderWidth: 1.5,
+    borderColor,
+    borderRadius: 14,
     paddingHorizontal: spacings.large,
-    paddingVertical: spacings.normalx,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: borderColor,
+    marginRight: spacings.normalx,
+  },
+  fieldFocus: {
     backgroundColor: cardBg,
+    borderColor: accentColor,
   },
   input: {
     color: textDark,
-    maxHeight: hp(14),
-    paddingVertical: spacings.large,
-    paddingHorizontal: spacings.normalx,
+    paddingVertical: spacings.normalx,
+    margin: 0,
   },
+  inputAndroid: { textAlignVertical: 'center' },
   sendButton: {
-    width: wp(11),
-    height: wp(11),
-    borderRadius: wp(5.5),
+    width: hp(5.6),
+    height: hp(5.6),
+    borderRadius: 14,
     backgroundColor: accentColor,
-    marginLeft: spacings.normalx,
   },
   sendDisabled: { backgroundColor: disabledBg },
-  errorRow: { color: textMuted },
 });

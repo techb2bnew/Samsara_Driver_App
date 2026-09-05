@@ -1,26 +1,29 @@
 import React from 'react';
-import { ActivityIndicator, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import {
   AppIcon,
   Card,
-  CustomButton,
   EmptyState,
   ListRow,
-  ScreenTitle,
   icons,
 } from '../../components';
 import { BaseStyle } from '../../constans/Style';
 import { spacings, style as fontStyle } from '../../constans/Fonts';
 import {
   accentColor,
+  accentSoft,
   appBg,
+  cardBg,
   dangerColor,
   dangerSoft,
+  shadowColor,
+  textDark,
+  textFaint,
   textMuted,
 } from '../../constans/Color';
-import { common, inspect as t } from '../../constans/Constants';
+import { common, inspect as t, repairs as r } from '../../constans/Constants';
 import { heightPercentageToDP as hp } from '../../utils';
 import * as api from '../../supabase/api';
 import { useAsync } from '../../hooks/useAsync';
@@ -32,7 +35,7 @@ type Props = NativeStackScreenProps<InspectStackParams, 'InspectHome'>;
 /**
  * Which form to fill in, and the way to report a fault without one.
  *
- * The fault button is at the top, not buried under the form list. Something
+ * The fault card is at the top, not buried under the form list. Something
  * breaking mid-route is the urgent case, and making a driver scroll past four
  * inspection forms to report a brake problem is how it gets reported at the
  * end of the shift instead.
@@ -49,15 +52,66 @@ export function InspectHomeScreen({ navigation }: Props) {
         refreshControl={
           <RefreshControl refreshing={loading} onRefresh={reload} tintColor={accentColor} />
         }>
-        <ScreenTitle title={t.title} subtitle={vehicle ? vehicle.name : undefined} />
+        <View style={styles.topBar}>
+          <Text style={[fontStyle.fontSizeSmall2x, styles.eyebrow]}>{t.title.toUpperCase()}</Text>
+          <Text style={[fontStyle.fontSizeLargeX, fontStyle.fontWeightMedium1x, styles.greeting]}>
+            {vehicle ? vehicle.name : t.title}
+          </Text>
+        </View>
 
-        <CustomButton
-          title={t.addDefect}
-          icon={icons.warning}
-          variant="danger"
+        {/*
+          Both at the top, above the forms. Something breaking mid-route is the
+          urgent case, and making a driver scroll past four inspection forms to
+          report a brake problem is how it gets reported at the end of the shift
+          instead.
+
+          Two cards rather than one, because they are two different records: a
+          fault is a finding about the truck's condition and goes on the
+          compliance file, a repair request is a job for the workshop. A driver
+          who wants a service booked has no fault to report.
+        */}
+        <Pressable
+          accessibilityRole="button"
           onPress={() => navigation.navigate('ReportFault')}
-        />
-        <Text style={[fontStyle.fontSizeSmall2x, styles.faultHint]}>{t.reportAlone}</Text>
+          style={({ pressed }) => [
+            BaseStyle.flexDirectionRow,
+            BaseStyle.alignItemsCenter,
+            styles.faultCard,
+            pressed && styles.pressed,
+          ]}>
+          <View style={[BaseStyle.alignJustifyCenter, styles.faultBadge]}>
+            <AppIcon name={icons.warning} size={20} color={dangerColor} />
+          </View>
+          <View style={BaseStyle.flex}>
+            <Text style={[fontStyle.fontSizeNormal2x, fontStyle.fontWeightMedium, styles.faultTitle]}>
+              {t.addDefect}
+            </Text>
+            <Text style={[fontStyle.fontSizeSmall2x, styles.faultHint]}>{t.reportAlone}</Text>
+          </View>
+          <AppIcon name={icons.forward} size={18} color={textFaint} />
+        </Pressable>
+
+        <Pressable
+          accessibilityRole="button"
+          onPress={() => navigation.navigate('RaiseWorkOrder')}
+          style={({ pressed }) => [
+            BaseStyle.flexDirectionRow,
+            BaseStyle.alignItemsCenter,
+            styles.faultCard,
+            styles.repairCard,
+            pressed && styles.pressed,
+          ]}>
+          <View style={[BaseStyle.alignJustifyCenter, styles.faultBadge, styles.repairBadge]}>
+            <AppIcon name={icons.truck} size={20} color={accentColor} />
+          </View>
+          <View style={BaseStyle.flex}>
+            <Text style={[fontStyle.fontSizeNormal2x, fontStyle.fontWeightMedium, styles.faultTitle]}>
+              {r.raise}
+            </Text>
+            <Text style={[fontStyle.fontSizeSmall2x, styles.faultHint]}>{r.raiseHint}</Text>
+          </View>
+          <AppIcon name={icons.forward} size={18} color={textFaint} />
+        </Pressable>
 
         {Boolean(error) && (
           <View style={[BaseStyle.flexDirectionRow, BaseStyle.alignItemsCenter, styles.error]}>
@@ -81,7 +135,7 @@ export function InspectHomeScreen({ navigation }: Props) {
         ) : (
           <>
             <Text style={[fontStyle.fontSizeSmall2x, fontStyle.fontWeightMedium, styles.section]}>
-              {t.title.toUpperCase()}
+              {t.forms.toUpperCase()}
             </Text>
             <Card padded={false}>
               {(forms ?? []).map((form, i) => (
@@ -117,21 +171,44 @@ export function InspectHomeScreen({ navigation }: Props) {
 const styles = StyleSheet.create({
   ground: { backgroundColor: appBg },
   body: { paddingHorizontal: spacings.xxLarge, paddingBottom: spacings.ExtraLarge },
-  faultHint: {
-    color: textMuted,
-    marginTop: spacings.normalx,
-    lineHeight: hp(2.6),
+  pressed: { opacity: 0.75 },
+
+  topBar: { paddingTop: spacings.xxLarge, paddingBottom: spacings.xxLarge },
+  eyebrow: { color: textFaint, letterSpacing: 1.2 },
+  greeting: { color: textDark, marginTop: spacings.xxsmall },
+
+  faultCard: {
+    backgroundColor: cardBg,
+    borderRadius: 20,
+    padding: spacings.xxLarge,
+    shadowColor,
+    shadowOpacity: 0.08,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 4,
   },
+  faultBadge: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    backgroundColor: dangerSoft,
+    marginRight: spacings.large,
+  },
+  repairCard: { marginTop: spacings.large },
+  repairBadge: { backgroundColor: accentSoft },
+  faultTitle: { color: textDark },
+  faultHint: { color: textMuted, marginTop: spacings.xxsmall, lineHeight: hp(2.4) },
+
   section: {
-    color: textMuted,
+    color: textFaint,
     letterSpacing: 1.1,
     marginTop: spacings.xxLarge,
-    marginBottom: spacings.normalx,
+    marginBottom: spacings.large,
   },
   loading: { paddingVertical: hp(8), alignItems: 'center' },
   error: {
     backgroundColor: dangerSoft,
-    borderRadius: 8,
+    borderRadius: 14,
     padding: spacings.large,
     marginTop: spacings.large,
   },

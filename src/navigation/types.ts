@@ -31,6 +31,12 @@ export type DutyStackParams = {
   VehiclePicker: undefined;
   /** ISO date, e.g. 2026-09-03. */
   DayLog: { date: string };
+  /*
+   * Also in Me, like Notifications. A driver who spots a wrong row while
+   * reading a day log should be able to challenge it there and come back to
+   * the log, not be thrown into another tab.
+   */
+  RequestCorrection: { eventId: string } | undefined;
 };
 
 export type RouteStackParams = {
@@ -44,6 +50,12 @@ export type InspectStackParams = {
   InspectionForm: { formId: string };
   /** Opened from an inspection, or on its own mid-route. */
   ReportFault: { formSubmissionId?: string } | undefined;
+  /*
+   * Asking the workshop for a job. Separate from ReportFault on purpose: a
+   * fault is a finding about the truck, this is a request for work, and
+   * sometimes there is no fault behind it at all.
+   */
+  RaiseWorkOrder: undefined;
   MyRepairs: undefined;
 };
 
@@ -59,6 +71,11 @@ export type MeStackParams = {
   MyViolations: undefined;
   MyDocuments: undefined;
   Training: undefined;
+  /*
+   * The assignment id, not the course id. Two drivers on the same course have
+   * their own progress, and the screen is showing one driver's.
+   */
+  Course: { assignmentId: string };
   RequestCorrection: { eventId: string } | undefined;
   Settings: undefined;
   Notifications: undefined;

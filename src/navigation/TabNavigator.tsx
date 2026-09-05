@@ -10,7 +10,6 @@ import { MeStack } from './MeStack';
 import { spacings, style as fontStyle } from '../constans/Fonts';
 import {
   accentColor,
-  borderColor,
   cardBg,
   onAccent,
   shadowColor,
@@ -117,15 +116,15 @@ export function TabNavigator() {
 const styles = StyleSheet.create({
   bar: {
     backgroundColor: cardBg,
-    borderTopColor: borderColor,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    height: hp(10),
-    paddingTop: spacings.normalx,
+    borderTopColor: 'transparent',
+    borderTopWidth: 0,
+    height: hp(9.4),
+    paddingTop: spacings.normal,
     shadowColor,
-    shadowOpacity: 0.06,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: -3 },
-    elevation: 8,
+    shadowOpacity: 0.08,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: -4 },
+    elevation: 12,
   },
   label: {
     ...StyleSheet.flatten(fontStyle.fontSizeSmall),

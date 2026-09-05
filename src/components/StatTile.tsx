@@ -3,7 +3,7 @@ import { StyleSheet, Text, View } from 'react-native';
 import { AppIcon } from './AppIcon';
 import { BaseStyle } from '../constans/Style';
 import { spacings, style as fontStyle } from '../constans/Fonts';
-import { borderColor, cardBg, textDark, textMuted } from '../constans/Color';
+import { cardBg, shadowColor, textDark, textMuted } from '../constans/Color';
 import { widthPercentageToDP as wp } from '../utils';
 
 /**
@@ -25,10 +25,8 @@ export function StatTile({
   tone?: string;
 }) {
   return (
-    <View style={[BaseStyle.flex, BaseStyle.borderRadius10, styles.tile]}>
-      {Boolean(icon) && (
-        <AppIcon name={icon as string} size={16} color={tone ?? textMuted} />
-      )}
+    <View style={[BaseStyle.flex, styles.tile]}>
+      {Boolean(icon) && <AppIcon name={icon as string} size={16} color={tone ?? textMuted} />}
       <Text
         style={[
           fontStyle.fontSizeLarge,
@@ -48,11 +46,15 @@ export function StatTile({
 const styles = StyleSheet.create({
   tile: {
     backgroundColor: cardBg,
-    borderWidth: 1,
-    borderColor,
-    paddingVertical: spacings.large,
+    borderRadius: 16,
+    paddingVertical: spacings.xLarge,
     paddingHorizontal: spacings.normalx,
     marginHorizontal: wp(0.8),
+    shadowColor,
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 2,
   },
   value: { color: textDark, marginTop: spacings.normal, fontVariant: ['tabular-nums'] },
   label: { color: textMuted, marginTop: spacings.xxsmall },

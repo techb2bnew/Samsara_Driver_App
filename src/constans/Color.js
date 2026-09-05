@@ -105,3 +105,8 @@ export const shadowColor = '#0B1220';
 
 // Placeholder inside an input. Muted is too dark next to typed text.
 export const placeholderColor = '#A2A9B6';
+
+// A focused field lifts off the card; an errored one takes the faintest wash
+// of the danger colour. Both were inline hex in CustomTextInput.
+export const inputFocusBg = '#FFFFFF';
+export const inputErrorBg = '#FFF7F6';

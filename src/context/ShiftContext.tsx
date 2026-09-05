@@ -4,10 +4,11 @@ import React, {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from 'react';
 import * as api from '../supabase/api';
-import type { DutyEvent, DutyStatus } from '../supabase/api';
+import type { AssignedRoute, DutyEvent, DutyStatus } from '../supabase/api';
 import { isoDate } from '../helpers/duty';
 import { useAuth } from './AuthContext';
 
@@ -28,6 +29,8 @@ type ShiftValue = {
   error: string | null;
   /** The truck signed on to, or null before one is picked. */
   vehicle: { assignmentId: string; vehicleId: string; name: string; plate: string } | null;
+  /** The assigned route, loaded with the shift so the Route tab is not a second wait. */
+  route: AssignedRoute | null;
   /** Original duty events across the loaded window, oldest first. */
   events: DutyEvent[];
   /** ISO dates that have been certified. */
@@ -58,6 +61,7 @@ export function ShiftProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [vehicle, setVehicle] = useState<ShiftValue['vehicle']>(null);
+  const [route, setRoute] = useState<AssignedRoute | null>(null);
   const [events, setEvents] = useState<DutyEvent[]>([]);
   const [certifiedDates, setCertifiedDates] = useState<ReadonlySet<string>>(new Set());
 
@@ -82,13 +86,15 @@ export function ShiftProvider({ children }: { children: React.ReactNode }) {
       const to = new Date();
       to.setDate(to.getDate() + 1);
 
-      const [current, dutyEvents, logs] = await Promise.all([
+      const [current, dutyEvents, logs, assigned] = await Promise.all([
         api.loadCurrentVehicle(profile.driverId),
         api.loadDutyEvents(profile.driverId, from.toISOString(), to.toISOString()),
         api.loadDailyLogs(profile.driverId, isoDate(from), isoDate(new Date())),
+        api.loadMyRoute(profile.driverId),
       ]);
 
       setVehicle(current);
+      setRoute(assigned);
       setEvents(dutyEvents);
       setCertifiedDates(
         new Set(logs.filter(l => l.certifiedAt !== null).map(l => l.logDate)),
@@ -104,11 +110,55 @@ export function ShiftProvider({ children }: { children: React.ReactNode }) {
     refresh();
   }, [refresh]);
 
+  /*
+   * Read through a ref so the subscription below depends only on the driver.
+   *
+   * refresh happens to be memoised on the same value today, so naming it as a
+   * dependency would work — but a socket that reconnects whenever an unrelated
+   * dependency is added to refresh is a nasty thing to debug, and a dropped
+   * reconnect means the other phone goes quiet.
+   */
+  const refreshRef = useRef(refresh);
+  refreshRef.current = refresh;
+
+  /*
+   * The same login on a second device.
+   *
+   * Without this, two phones signed in as one driver disagree about what duty
+   * status they are in until somebody pulls to refresh — and duty status is
+   * the driver's legal record. The office changing a status, or a correction
+   * being approved, lands the same way.
+   *
+   * Debounced, and the delay is doing real work. A phone hears its own insert
+   * as well as the other device's, and a status change writes one row that
+   * this provider has already applied optimistically; without the delay every
+   * tap would cost two reads of an eight day window. The trailing edge also
+   * collapses a burst — the office approving four corrections at once is one
+   * read, not four.
+   */
+  useEffect(() => {
+    if (!profile) return;
+
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const unsubscribe = api.onMyDutyChanged(profile.driverId, () => {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => {
+        refreshRef.current().catch(() => {});
+      }, 900);
+    });
+
+    return () => {
+      if (timer) clearTimeout(timer);
+      unsubscribe();
+    };
+  }, [profile]);
+
   const value = useMemo<ShiftValue>(
     () => ({
       loading,
       error,
       vehicle,
+      route,
       events,
       certifiedDates,
       earliestDate,
@@ -116,7 +166,14 @@ export function ShiftProvider({ children }: { children: React.ReactNode }) {
 
       signOnToVehicle: async (vehicleId: string) => {
         if (!profile) throw new Error('Not signed in.');
-        await api.signOnToVehicle(profile.orgId, profile.driverId, vehicleId);
+        /*
+         * The org and driver are not passed any more: the RPC reads them from
+         * the session. Nothing optimistic here either — the truck either
+         * changes or it does not, and showing the new truck before the write
+         * landed would tell a driver they are on a vehicle a colleague is
+         * sitting in.
+         */
+        await api.signOnToVehicle(vehicleId);
         await refresh();
       },
 
@@ -128,26 +185,51 @@ export function ShiftProvider({ children }: { children: React.ReactNode }) {
          * is append-only and stores no end time, so an event sent late is
          * still correct as long as its own start is right — which is what makes
          * this safe to queue when there is no signal.
+         *
+         * The local list is updated first so the buttons and graph move on
+         * the tap, not after the radio round-trip. Waiting for the write was
+         * why a driver hammered the same button three times.
          */
         const startedAt = new Date().toISOString();
-
-        await api.recordDutyEvent(
-          profile.orgId,
-          profile.driverId,
+        const optimistic: DutyEvent = {
+          id: `local-${startedAt}`,
           status,
           startedAt,
-          vehicle?.vehicleId ?? null,
-        );
-        await refresh();
+          vehicleId: vehicle?.vehicleId ?? null,
+          // A brand new event has nothing to correct.
+          correction: null,
+        };
+        setEvents(current => [...current, optimistic]);
+
+        try {
+          await api.recordDutyEvent(
+            profile.orgId,
+            profile.driverId,
+            status,
+            startedAt,
+            vehicle?.vehicleId ?? null,
+          );
+        } catch (err) {
+          setEvents(current => current.filter(event => event.id !== optimistic.id));
+          throw err;
+        }
+
+        refresh().catch(() => {});
       },
 
       certifyDay: async (date: string) => {
         if (!profile) throw new Error('Not signed in.');
         await api.certifyDay(profile.orgId, profile.driverId, date);
+        /*
+         * Applied locally as well as arriving over the socket a moment later.
+         * The tick has to appear on the tap — a driver who sees nothing happen
+         * presses again, and certifying is the one action where a second press
+         * is a second signature.
+         */
         setCertifiedDates(current => new Set([...current, date]));
       },
     }),
-    [loading, error, vehicle, events, certifiedDates, earliestDate, refresh, profile],
+    [loading, error, vehicle, route, events, certifiedDates, earliestDate, refresh, profile],
   );
 
   return <ShiftContext.Provider value={value}>{children}</ShiftContext.Provider>;

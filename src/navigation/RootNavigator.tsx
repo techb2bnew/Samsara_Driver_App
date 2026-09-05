@@ -42,42 +42,43 @@ export function RootNavigator() {
     return () => clearTimeout(timer);
   }, []);
 
-  if (state.status === 'loading' || onboarded === null || splashHeld) {
+  if (state.status === 'loading' || onboarded === null) {
     return <SplashScreen />;
   }
 
   if (!onboarded) {
+    if (splashHeld) return <SplashScreen />;
     return <OnboardingScreen />;
+  }
+
+  /*
+   * Signed-in providers mount while the splash is still up, so the shift and
+   * route are already on the phone when the tabs appear. Holding the splash
+   * without them meant a second wait behind a spinner on every tab.
+   */
+  if (state.status === 'signedIn') {
+    return (
+      <ShiftProvider>
+        <NotificationProvider>
+          {splashHeld ? (
+            <SplashScreen />
+          ) : (
+            <NavigationContainer theme={navTheme}>
+              <TabNavigator />
+            </NavigationContainer>
+          )}
+        </NotificationProvider>
+      </ShiftProvider>
+    );
+  }
+
+  if (splashHeld) {
+    return <SplashScreen />;
   }
 
   return (
     <NavigationContainer theme={navTheme}>
-      {state.status === 'signedIn' ? (
-        /*
-         * Inside the signed-in branch, not at the root. The shift is a
-         * driver's truck and today's events; mounted above the auth gate it
-         * would have no profile to load and would fire a query per sign-in
-         * attempt.
-         */
-        <ShiftProvider>
-          {/* Inside ShiftProvider: notifications read the current truck to
-              work out whether an assignment event is actually a change. */}
-          <NotificationProvider>
-            <TabNavigator />
-          </NotificationProvider>
-        </ShiftProvider>
-      ) : state.status === 'notADriver' ? (
-        <NotADriver />
-      ) : (
-        /*
-         * Also the home of the password reset. Verifying a recovery code
-         * creates a real session, so this branch is chosen on `signedIn`
-         * rather than on "has a session" — otherwise the tree would swap to
-         * the tabs halfway through the reset and strand the driver in the app
-         * with a password they have not set yet.
-         */
-        <AuthNavigator />
-      )}
+      {state.status === 'notADriver' ? <NotADriver /> : <AuthNavigator />}
     </NavigationContainer>
   );
 }

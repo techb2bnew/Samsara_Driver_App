@@ -43,6 +43,7 @@ export type DriverNotification = {
 type NotificationValue = {
   items: DriverNotification[];
   unreadCount: number;
+  unreadIds: ReadonlySet<string>;
   /** Unread messages from the office, for the Messages tab badge. */
   unreadMessages: number;
   markAllRead: () => void;
@@ -224,6 +225,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     return {
       items,
       unreadCount: unread.length,
+      unreadIds: new Set(unread.map(i => i.id)),
       unreadMessages,
       markAllRead: () => {
         const next = new Set([...seen, ...items.map(i => i.id)]);

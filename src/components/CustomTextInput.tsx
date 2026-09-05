@@ -22,6 +22,8 @@ import {
   placeholderColor,
   textDark,
   textMuted,
+  inputFocusBg,
+  inputErrorBg,
 } from '../constans/Color';
 import { heightPercentageToDP as hp } from '../utils';
 
@@ -59,6 +61,14 @@ export const CustomTextInput = React.forwardRef<
     onBlur?: () => void;
     maxLength?: number;
     editable?: boolean;
+    /**
+     * Grows to a few lines and keeps Return as a newline rather than submit.
+     *
+     * Needed wherever a driver is describing something rather than filling a
+     * field in — what is wrong with a truck, why a log is wrong. A single line
+     * for those makes them write less than they should.
+     */
+    multiline?: boolean;
     autoComplete?: 'email' | 'password' | 'new-password' | 'off';
     textContentType?: 'emailAddress' | 'password' | 'newPassword' | 'oneTimeCode';
     style?: StyleProp<ViewStyle>;
@@ -80,6 +90,7 @@ export const CustomTextInput = React.forwardRef<
     onBlur,
     maxLength,
     editable = true,
+    multiline = false,
     autoComplete,
     textContentType,
     style,
@@ -114,9 +125,12 @@ export const CustomTextInput = React.forwardRef<
       <View
         style={[
           BaseStyle.flexDirectionRow,
-          BaseStyle.alignItemsCenter,
+          // Centred on one line, top-aligned once it grows — a centred icon
+          // next to four lines of text floats in the middle of the box.
+          multiline ? BaseStyle.alignItemsFlexStart : BaseStyle.alignItemsCenter,
           BaseStyle.borderRadius10,
           styles.field,
+          multiline && styles.fieldMultiline,
           { borderColor: outline },
           focused && !error && styles.fieldFocus,
           Boolean(error) && styles.fieldError,
@@ -145,9 +159,13 @@ export const CustomTextInput = React.forwardRef<
           textContentType={textContentType}
           returnKeyType={returnKeyType}
           onSubmitEditing={onSubmitEditing}
-          blurOnSubmit={returnKeyType !== 'next'}
           maxLength={maxLength}
           editable={editable}
+          multiline={multiline}
+          // Return inserts a newline in a multiline box, so it must not also
+          // dismiss the keyboard.
+          blurOnSubmit={multiline ? false : returnKeyType !== 'next'}
+          textAlignVertical={multiline ? 'top' : 'center'}
           selection={selection}
           onFocus={() => setFocused(true)}
           onBlur={() => {
@@ -159,6 +177,7 @@ export const CustomTextInput = React.forwardRef<
             fontStyle.fontSizeNormal1x,
             styles.input,
             Platform.OS === 'android' ? styles.inputAndroid : null,
+            multiline && styles.inputMultiline,
           ]}
         />
 
@@ -198,11 +217,22 @@ const styles = StyleSheet.create({
     height: hp(5.6),
     paddingHorizontal: spacings.large,
   },
-  fieldFocus: { backgroundColor: '#FFFFFF' },
-  fieldError: { backgroundColor: '#FFF7F6' },
+  fieldFocus: { backgroundColor: inputFocusBg },
+  fieldError: { backgroundColor: inputErrorBg },
   leading: { marginRight: spacings.normalx },
   input: { color: textDark, paddingVertical: 0, margin: 0 },
   inputAndroid: { textAlignVertical: 'center' },
+  /*
+   * height is dropped rather than raised: the single-line field is a fixed
+   * height so every input on a form lines up, and a multiline box has to be
+   * free to grow past it.
+   */
+  fieldMultiline: {
+    height: undefined,
+    minHeight: hp(13),
+    paddingVertical: spacings.normalx,
+  },
+  inputMultiline: { textAlignVertical: 'top' },
   toggle: { paddingLeft: spacings.normalx, paddingVertical: spacings.small },
   errorRow: { marginTop: spacings.normal },
   error: { color: dangerColor, marginLeft: spacings.small, flex: 1 },

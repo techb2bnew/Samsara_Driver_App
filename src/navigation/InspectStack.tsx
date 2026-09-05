@@ -3,6 +3,7 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { InspectHomeScreen } from '../screens/inspect/InspectHomeScreen';
 import { InspectionFormScreen } from '../screens/inspect/InspectionFormScreen';
 import { ReportFaultScreen } from '../screens/inspect/ReportFaultScreen';
+import { RaiseWorkOrderScreen } from '../screens/inspect/RaiseWorkOrderScreen';
 import { MyRepairsScreen } from '../screens/inspect/MyRepairsScreen';
 import { homeScreenOptions, nestedScreenOptions } from './screenOptions';
 import { screenTitles } from '../constans/Constants';
@@ -30,6 +31,11 @@ export function InspectStack() {
         name="ReportFault"
         component={ReportFaultScreen}
         options={{ title: screenTitles.reportFault, presentation: 'modal' }}
+      />
+      <Stack.Screen
+        name="RaiseWorkOrder"
+        component={RaiseWorkOrderScreen}
+        options={{ title: screenTitles.raiseWorkOrder, presentation: 'modal' }}
       />
       <Stack.Screen
         name="MyRepairs"

@@ -2,7 +2,13 @@ import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { BaseStyle } from '../constans/Style';
 import { spacings, style as fontStyle } from '../constans/Fonts';
-import { textDark } from '../constans/Color';
+import {
+  cardBg,
+  shadowColor,
+  textDark,
+  textFaint,
+  textMuted,
+} from '../constans/Color';
 import { common, duty as t } from '../constans/Constants';
 import { formatClock } from '../helpers/duty';
 import type { Recap } from '../helpers/hosLimits';
@@ -15,10 +21,6 @@ import { heightPercentageToDP as hp } from '../utils';
  * allowed. This is the one strip on the screen a driver makes a decision from,
  * so the labels are the industry's own words and the figures are the ones they
  * expect next to them.
- *
- * Dark on a light screen on purpose: it has to be findable at a glance without
- * reading, and inverting it is what separates the decision from the record
- * above it.
  *
  * A dash means not known, never zero. With no rule book chosen there is no
  * limit to subtract from, and "0:00 driving left" would stop a driver who has
@@ -35,20 +37,16 @@ export function HosRecap({ recap }: { recap: Recap }) {
   const known = cells.some(([, value]) => value !== null);
 
   return (
-    <View style={styles.strip}>
+    <View style={styles.card}>
+      <Text style={[fontStyle.fontSizeExtraSmall, fontStyle.fontWeightMedium, styles.kicker]}>
+        {t.recap.hoursLeft.toUpperCase()}
+      </Text>
       <View style={[BaseStyle.flexDirectionRow, BaseStyle.flexWrap]}>
         {cells.map(([label, value]) => (
-          <View
-            key={label}
-            style={[
-              BaseStyle.flexDirectionRow,
-              BaseStyle.alignItemsCenter,
-              BaseStyle.justifyContentSpaceBetween,
-              styles.cell,
-            ]}>
-            <Text style={[fontStyle.fontSizeSmall1x, styles.label]}>{label}</Text>
+          <View key={label} style={[BaseStyle.alignItemsFlexStart, styles.cell]}>
+            <Text style={[fontStyle.fontSizeExtraSmall, styles.label]}>{label}</Text>
             <Text
-              style={[fontStyle.fontSizeNormal1x, fontStyle.fontWeightMedium, styles.value]}>
+              style={[fontStyle.fontSizeMedium1x, fontStyle.fontWeightMedium1x, styles.value]}>
               {value === null ? common.dash : formatClock(value)}
             </Text>
           </View>
@@ -63,21 +61,27 @@ export function HosRecap({ recap }: { recap: Recap }) {
 }
 
 const styles = StyleSheet.create({
-  strip: {
-    backgroundColor: textDark,
-    borderRadius: 8,
-    paddingVertical: spacings.normalx,
-    paddingHorizontal: spacings.large,
+  card: {
+    backgroundColor: cardBg,
+    borderRadius: 20,
+    paddingVertical: spacings.xLarge,
+    paddingHorizontal: spacings.xxLarge,
+    shadowColor,
+    shadowOpacity: 0.08,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 4,
   },
+  kicker: { color: textFaint, letterSpacing: 1.1, marginBottom: spacings.large },
   cell: {
     width: '50%',
     paddingVertical: spacings.normal,
     paddingRight: spacings.large,
   },
-  label: { color: 'rgba(255,255,255,0.62)' },
-  value: { color: '#FFFFFF', fontVariant: ['tabular-nums'] },
+  label: { color: textMuted },
+  value: { color: textDark, marginTop: spacings.xxsmall, fontVariant: ['tabular-nums'] },
   note: {
-    color: 'rgba(255,255,255,0.5)',
+    color: textMuted,
     marginTop: spacings.normal,
     lineHeight: hp(2.1),
   },

@@ -90,7 +90,7 @@ export function VehiclePickerScreen({ navigation }: Props) {
         ) : options.length === 0 ? (
           <View style={[BaseStyle.alignItemsCenter, styles.empty]}>
             <View style={[BaseStyle.alignJustifyCenter, styles.emptyArt]}>
-              <AppIcon name={icons.truck} size={wp(10)} color={textFaint} />
+              <AppIcon name={icons.truck} size={26} color={accentColor} />
             </View>
             <Text
               style={[
@@ -116,18 +116,28 @@ export function VehiclePickerScreen({ navigation }: Props) {
           options.map(option => {
             const active = option.id === chosen;
             const current = option.id === vehicle?.vehicleId;
+            /*
+              Disabled rather than hidden. A driver walking up to a truck and
+              not finding it in the list assumes the app is broken; the same
+              truck greyed out with a reason tells them to go and find out who
+              has it. sign_on_to_vehicle refuses it anyway — this is so they
+              never get that far.
+            */
+            const busy = Boolean(option.inUse) && !current;
             return (
               <Pressable
                 key={option.id}
                 accessibilityRole="button"
-                accessibilityState={{ selected: active }}
+                accessibilityState={{ selected: active, disabled: busy }}
+                accessibilityLabel={busy ? `${option.name}. ${t.inUse}` : option.name}
+                disabled={busy}
                 onPress={() => setChosen(option.id)}
                 style={({ pressed }) => [
                   BaseStyle.flexDirectionRow,
                   BaseStyle.alignItemsCenter,
-                  BaseStyle.borderRadius10,
                   styles.row,
                   active && styles.rowActive,
+                  busy && styles.rowBusy,
                   pressed && styles.pressed,
                 ]}>
                 <View
@@ -139,7 +149,7 @@ export function VehiclePickerScreen({ navigation }: Props) {
                   <AppIcon
                     name={icons.truck}
                     size={20}
-                    color={active ? accentColor : textMuted}
+                    color={accentColor}
                   />
                 </View>
 
@@ -158,14 +168,20 @@ export function VehiclePickerScreen({ navigation }: Props) {
                   {/* Shown so a driver notices when they are about to sign on
                       to a truck they are already on, and to make "change
                       truck" obviously a change. */}
-                  {current && (
+                  {current ? (
                     <Text style={[fontStyle.fontSizeSmall1x, styles.currentTag]}>
                       {t.current}
                     </Text>
-                  )}
+                  ) : busy ? (
+                    <Text style={[fontStyle.fontSizeSmall1x, styles.busyTag]}>{t.inUse}</Text>
+                  ) : null}
                 </View>
 
-                {active && <AppIcon name={icons.checkCircle} size={22} color={accentColor} />}
+                {busy ? (
+                  <AppIcon name={icons.lock} size={18} color={textFaint} />
+                ) : active ? (
+                  <AppIcon name={icons.checkCircle} size={22} color={accentColor} />
+                ) : null}
               </Pressable>
             );
           })
@@ -209,30 +225,40 @@ const styles = StyleSheet.create({
 
   row: {
     backgroundColor: cardBg,
+    borderRadius: 20,
     borderWidth: 1.5,
-    borderColor,
-    padding: spacings.large,
+    borderColor: 'transparent',
+    padding: spacings.xxLarge,
     marginBottom: spacings.large,
+    shadowColor: '#0B1220',
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 2,
   },
   rowActive: { borderColor: accentColor },
+  // Dimmed rather than greyed to a different colour: the row still has to be
+  // readable, because the whole point is that the driver reads why.
+  rowBusy: { opacity: 0.55 },
   badge: {
-    width: wp(11),
-    height: wp(11),
-    borderRadius: wp(5.5),
-    backgroundColor: appBg,
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    backgroundColor: accentSoft,
     marginRight: spacings.large,
   },
   badgeActive: { backgroundColor: accentSoft },
   name: { color: textDark },
   meta: { color: textMuted, marginTop: spacings.xxsmall },
   currentTag: { color: okColor, marginTop: spacings.xxsmall },
+  busyTag: { color: textMuted, marginTop: spacings.xxsmall },
 
   empty: { paddingVertical: hp(6) },
   emptyArt: {
-    width: wp(22),
-    height: wp(22),
-    borderRadius: wp(11),
-    backgroundColor: cardBg,
+    width: 56,
+    height: 56,
+    borderRadius: 16,
+    backgroundColor: accentSoft,
     marginBottom: spacings.xLarge,
   },
   emptyTitle: { color: textDark, marginBottom: spacings.normalx },

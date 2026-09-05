@@ -5,7 +5,6 @@ import { BaseStyle } from '../constans/Style';
 import { spacings, style as fontStyle } from '../constans/Fonts';
 import {
   accentColor,
-  borderColor,
   cardBg,
   textDark,
   textFaint,
@@ -33,11 +32,14 @@ export function DayPicker({
   date,
   earliest,
   onChange,
+  embedded = false,
 }: {
   date: Date;
   /** ISO date. Paging back stops here. */
   earliest: string;
   onChange: (next: Date) => void;
+  /** Skip the raised card chrome when this already sits inside one. */
+  embedded?: boolean;
 }) {
   const today = new Date();
   const key = isoDate(date);
@@ -72,8 +74,8 @@ export function DayPicker({
         BaseStyle.flexDirectionRow,
         BaseStyle.alignItemsCenter,
         BaseStyle.justifyContentSpaceBetween,
-        BaseStyle.borderRadius10,
         styles.bar,
+        embedded && styles.embedded,
       ]}>
       <Arrow
         icon={icons.back}
@@ -139,10 +141,21 @@ function Arrow({
 const styles = StyleSheet.create({
   bar: {
     backgroundColor: cardBg,
-    borderWidth: 1,
-    borderColor,
+    borderRadius: 16,
     paddingVertical: spacings.normalx,
     paddingHorizontal: spacings.normalx,
+    shadowColor: '#0B1220',
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 2,
+  },
+  embedded: {
+    backgroundColor: 'transparent',
+    shadowOpacity: 0,
+    elevation: 0,
+    paddingVertical: 0,
+    paddingHorizontal: 0,
   },
   arrow: { width: wp(10), height: wp(10) },
   pressed: { opacity: 0.6 },

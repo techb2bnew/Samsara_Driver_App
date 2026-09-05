@@ -8,7 +8,6 @@ import { spacings, style as fontStyle } from '../../constans/Fonts';
 import {
   accentColor,
   appBg,
-  borderColor,
   cardBg,
   okColor,
   onAccent,
@@ -18,10 +17,8 @@ import {
 } from '../../constans/Color';
 import { routeScreen as t } from '../../constans/Constants';
 import { heightPercentageToDP as hp, widthPercentageToDP as wp } from '../../utils';
-import * as api from '../../supabase/api';
 import type { LatLng } from '../../supabase/api';
-import { useAsync } from '../../hooks/useAsync';
-import { useAuth } from '../../context/AuthContext';
+import { useShift } from '../../context/ShiftContext';
 import type { RouteStackParams } from '../../navigation/types';
 
 type Props = NativeStackScreenProps<RouteStackParams, 'RouteMap'>;
@@ -42,16 +39,9 @@ const EDGE_PADDING = { top: 80, right: 60, bottom: 200, left: 60 };
  */
 export function RouteMapScreen({ route: navRoute }: Props) {
   const { routeId } = navRoute.params;
-  const { state } = useAuth();
-  const profile = state.status === 'signedIn' ? state.profile : null;
-
+  const { route: assigned, loading } = useShift();
   const mapRef = useRef<MapView>(null);
   const [ready, setReady] = useState(false);
-
-  const { data: assigned, loading } = useAsync(
-    () => (profile ? api.loadMyRoute(profile.driverId) : Promise.resolve(null)),
-    [profile?.driverId],
-  );
 
   // The screen is reached from this route, but the driver could in principle
   // be moved off it between screens. Better an empty map than another's route.
@@ -91,7 +81,7 @@ export function RouteMapScreen({ route: navRoute }: Props) {
     });
   };
 
-  if (loading) {
+  if (loading && !assigned) {
     return (
       <View style={[BaseStyle.flex, BaseStyle.alignJustifyCenter, styles.ground]}>
         <ActivityIndicator color={accentColor} />
@@ -244,12 +234,10 @@ const styles = StyleSheet.create({
     height: wp(11),
     borderRadius: wp(5.5),
     backgroundColor: cardBg,
-    borderWidth: 1,
-    borderColor,
     shadowColor,
-    shadowOpacity: 0.12,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
     elevation: 4,
   },
 
@@ -259,14 +247,12 @@ const styles = StyleSheet.create({
     right: spacings.large,
     bottom: spacings.large,
     backgroundColor: cardBg,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor,
-    padding: spacings.large,
+    borderRadius: 20,
+    padding: spacings.xxLarge,
     shadowColor,
-    shadowOpacity: 0.14,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.08,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 8 },
     elevation: 8,
   },
   ref: { color: textDark },
