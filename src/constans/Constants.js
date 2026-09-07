@@ -145,6 +145,23 @@ export const duty = {
     driving: 'Driving',
     on_duty: 'On duty',
   },
+  /*
+    The tooltip on the graph.
+
+    It exists for the small blocks. A block only gets its duration written on
+    it once it is 75 minutes wide, so a five-minute stop was drawn and then
+    left unreadable — which is exactly the entry a driver wants to check.
+  */
+  graphTip: {
+    span: (from, to) => `${from} – ${to}`,
+    block: 'This block',
+    dayTotal: 'Total today',
+    /* Every block of the same status added together, which is what the driver
+       is asking when they tap the third off-duty stop of the morning. */
+    dayTotalHint: 'All blocks of this status, added up',
+    none: 'No time in this status today',
+    close: 'Close',
+  },
   since: (time) => `Since ${time}`,
   // Reads next to the start time: "Since 09:00 · 1:23".
   elapsed: (clock) => `· ${clock}`,

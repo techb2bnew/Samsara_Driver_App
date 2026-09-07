@@ -68,6 +68,28 @@ export function TabNavigator() {
         tabBarStyle: styles.bar,
         tabBarLabelStyle: styles.label,
         tabBarItemStyle: styles.item,
+
+        /*
+         * Leaving a tab closes whatever was open inside it.
+         *
+         * Each tab keeps its own stack, so a driver who opened Me → My
+         * documents, switched to Duty, then pressed Me came back to My
+         * documents rather than to Me. That is the documented behaviour and it
+         * is wrong here: a bottom tab reads as "take me to that section", not
+         * "restore whatever I was last reading in it", and there is no back
+         * button visible from another tab to explain why Me is not Me.
+         *
+         * popToTopOnBlur rather than unmounting the tab: the stack is reset,
+         * the tab itself stays mounted, and the things that depend on staying
+         * mounted keep working — the message read-receipt guard and the
+         * notification subscriptions among them.
+         *
+         * The cost is deliberate and worth knowing: anything half-filled in a
+         * nested screen is discarded when the driver looks at another tab. An
+         * inspection in progress and an unsent paperwork photo are the two
+         * that hurt. See the note in InspectStack.
+         */
+        popToTopOnBlur: true,
       }}>
       <Tab.Screen
         name="DutyTab"
