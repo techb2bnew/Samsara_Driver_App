@@ -1,5 +1,6 @@
 import { PermissionsAndroid, Platform } from 'react-native';
 import type { ImagePickerResponse } from 'react-native-image-picker';
+import { normaliseMimeType } from './mime';
 
 /**
  * Taking or choosing one photograph.
@@ -17,6 +18,20 @@ export type Picture = {
   mimeType: string;
   /** Bytes. Null when the platform did not say. */
   size: number | null;
+  /**
+   * The file's contents, base64.
+   *
+   * Carried rather than read from the uri later, because in bare React Native
+   * there is no reliable way to read a file:// uri. `fetch(uri).arrayBuffer()`
+   * — which is what Supabase's own React Native example does — resolves with
+   * an EMPTY buffer here: no error, a zero-byte upload, and paperwork that
+   * appeared to send and arrived as nothing.
+   *
+   * At 1600px and 0.7 quality a photo is 200-400 KB, so its base64 is roughly
+   * 270-540 KB held for as long as the screen is open. That is the cost of
+   * having the bytes at all.
+   */
+  base64: string;
 };
 
 export type PickOutcome =
@@ -65,14 +80,27 @@ function fromResponse(response: ImagePickerResponse): PickOutcome {
   if (!asset?.uri) {
     return { ok: false, cancelled: false, reason: 'No photo was returned.' };
   }
+  if (!asset.base64) {
+    /*
+     * Refused rather than uploaded empty. Without the contents there is
+     * nothing to send, and sending nothing is the failure this whole path
+     * exists to avoid.
+     */
+    return { ok: false, cancelled: false, reason: 'That photo could not be read.' };
+  }
 
   return {
     ok: true,
     picture: {
       uri: asset.uri,
       fileName: asset.fileName ?? 'photo.jpg',
-      mimeType: asset.type ?? 'image/jpeg',
+      /*
+       * Normalised, because Android reports image/jpg — which is not a MIME
+       * type and which storage rejects. See helpers/mime.
+       */
+      mimeType: normaliseMimeType(asset.type),
       size: typeof asset.fileSize === 'number' ? asset.fileSize : null,
+      base64: asset.base64,
     },
   };
 }
@@ -109,9 +137,8 @@ export async function takePhoto(): Promise<PickOutcome> {
 
   const response = await mod.launchCamera({
     mediaType: 'photo',
-    // The file is uploaded from its uri, so a base64 copy in memory would be a
-    // second megabyte of the same picture for nothing.
-    includeBase64: false,
+    // The only reliable way to get the bytes in bare React Native. See Picture.
+    includeBase64: true,
     saveToPhotos: false,
     ...LIMITS,
   });
@@ -125,7 +152,7 @@ export async function choosePhoto(): Promise<PickOutcome> {
   const response = await mod.launchImageLibrary({
     mediaType: 'photo',
     selectionLimit: 1,
-    includeBase64: false,
+    includeBase64: true,
     ...LIMITS,
   });
   return fromResponse(response);

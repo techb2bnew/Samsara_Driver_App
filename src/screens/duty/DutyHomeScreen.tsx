@@ -1,8 +1,8 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { RefreshControl, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { BottomTabScreenProps } from '@react-navigation/bottom-tabs';
-import type { CompositeScreenProps } from '@react-navigation/native';
+import { useFocusEffect, type CompositeScreenProps } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import {
   AppIcon,
@@ -36,7 +36,7 @@ import {
   textFaint,
   textMuted,
 } from '../../constans/Color';
-import { common, dayLog, duty as t, screenTitles } from '../../constans/Constants';
+import { common, dayLog, duty as t, screenTitles, training } from '../../constans/Constants';
 import { heightPercentageToDP as hp, widthPercentageToDP as wp } from '../../utils';
 import { useShift } from '../../context/ShiftContext';
 import {
@@ -50,11 +50,13 @@ import {
   onDutyMinutes,
   segmentsForDay,
 } from '../../helpers/duty';
-import { cycleDaysFor, recapFor, regulatorFrom } from '../../helpers/hosLimits';
+import { recapFor } from '../../helpers/hosLimits';
 import { useAuth } from '../../context/AuthContext';
 import { useNotifications } from '../../context/NotificationContext';
 import { displayName } from '../../helpers/names';
+import { useAsync } from '../../hooks/useAsync';
 import { useNow } from '../../hooks/useNow';
+import * as api from '../../supabase/api';
 import type { DutyStatus } from '../../supabase/api';
 import type { DutyStackParams, TabParams } from '../../navigation/types';
 
@@ -103,6 +105,32 @@ export function DutyHomeScreen({ navigation }: Props) {
   } = useShift();
 
   const { unreadCount } = useNotifications();
+
+  /*
+   * Training the driver still owes.
+   *
+   * Read here rather than left to the Me tab, because a course nobody opens is
+   * a course nobody does — Me → Training is four taps away and there is
+   * nothing on the screen a driver actually uses to say anything is waiting.
+   *
+   * Quiet on focus: coming back from finishing one should make the card go
+   * away without flashing a spinner over the duty screen.
+   */
+  const { data: courses, reloadQuietly: reloadCourses } = useAsync(
+    () => (profile ? api.loadMyCourses(profile.driverId) : Promise.resolve([])),
+    [profile?.driverId],
+  );
+
+  useFocusEffect(
+    useCallback(() => {
+      reloadCourses();
+    }, [reloadCourses]),
+  );
+
+  const owed = (courses ?? []).filter((c) => !c.completedAt);
+  const overdue = owed.filter(
+    (c) => c.dueOn !== null && c.dueOn < new Date().toISOString().slice(0, 10),
+  ).length;
   const [confirming, setConfirming] = useState(false);
   const [certifying, setCertifying] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
@@ -170,17 +198,17 @@ export function DutyHomeScreen({ navigation }: Props) {
   const recap = useMemo(() => {
     if (!isToday) return null;
 
-    const book = regulatorFrom(profile?.regulator ?? null);
+    const book = profile?.limits ?? null;
     if (!book) return recapFor(null, segments, []);
 
     const days: ReturnType<typeof segmentsForDay>[] = [];
-    for (let back = cycleDaysFor(book) - 1; back >= 0; back--) {
+    for (let back = book.cycleDays - 1; back >= 0; back--) {
       const day = new Date(today);
       day.setDate(today.getDate() - back);
       days.push(segmentsForDay(events, day, today));
     }
     return recapFor(book, segments, days);
-  }, [isToday, profile?.regulator, events, segments, today]);
+  }, [isToday, profile?.limits, events, segments, today]);
   const activeEvent = currentStatus(events);
   const activeStatus = activeEvent?.status ?? null;
   const activeChoice = CHOICES.find(c => c.status === activeStatus) ?? CHOICES[0];
@@ -381,6 +409,49 @@ export function DutyHomeScreen({ navigation }: Props) {
               {failure ?? error}
             </Text>
           </View>
+        )}
+
+        {/*
+          Only when something is outstanding, and gone the moment it is not.
+          A permanent "Training" tile is a tile that stops being read.
+        */}
+        {owed.length > 0 && (
+          <TouchableOpacity
+            accessibilityRole="button"
+            activeOpacity={0.8}
+            delayPressIn={0}
+            onPress={() =>
+              /*
+               * Straight to the course when there is one, the list when there
+               * are several. Landing on a list of one is a tap for nothing.
+               */
+              owed.length === 1
+                ? navigation.navigate('Course', { assignmentId: owed[0].assignmentId })
+                : navigation.navigate('Training')
+            }
+            style={[BaseStyle.flexDirectionRow, BaseStyle.alignItemsCenter, styles.training]}>
+            <View style={[BaseStyle.alignJustifyCenter, styles.trainingBadge]}>
+              <AppIcon name={icons.logbook} size={19} color={accentColor} />
+            </View>
+            <View style={BaseStyle.flex}>
+              <Text
+                style={[
+                  fontStyle.fontSizeNormal1x,
+                  fontStyle.fontWeightMedium,
+                  styles.trainingTitle,
+                ]}>
+                {owed.length === 1 ? training.waitingOne : training.waitingMany(owed.length)}
+              </Text>
+              <Text style={[fontStyle.fontSizeSmall2x, styles.trainingHint]}>
+                {overdue > 0
+                  ? training.waitingOverdue(overdue)
+                  : owed.length === 1
+                    ? training.waitingHint
+                    : training.waitingHintMany}
+              </Text>
+            </View>
+            <AppIcon name={icons.forward} size={17} color={textFaint} />
+          </TouchableOpacity>
         )}
 
         {recap && (
@@ -586,6 +657,29 @@ const styles = StyleSheet.create({
     marginTop: spacings.large,
   },
   failureText: { color: accentColor, marginLeft: spacings.normalx, flex: 1 },
+
+  training: {
+    backgroundColor: cardBg,
+    borderRadius: 18,
+    borderLeftWidth: 4,
+    borderLeftColor: accentColor,
+    padding: spacings.xLarge,
+    marginTop: spacings.large,
+    shadowColor,
+    shadowOpacity: 0.08,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 3,
+  },
+  trainingBadge: {
+    width: 40,
+    height: 40,
+    borderRadius: 13,
+    backgroundColor: accentSoft,
+    marginRight: spacings.large,
+  },
+  trainingTitle: { color: textDark },
+  trainingHint: { color: textMuted, marginTop: spacings.xxsmall },
 
   recap: { marginTop: spacings.large },
   logCard: {

@@ -342,6 +342,7 @@ export const messages = {
 
 export const me = {
   title: 'Me',
+  noTruck: 'No truck picked yet',
   profile: 'My details',
   employeeNumber: 'Employee number',
   depot: 'Depot',
@@ -528,6 +529,7 @@ export const modal = {
     message:
       'Your duty logs, inspections and signatures are a legal record and are kept by your fleet — deleting your login does not remove them. Your fleet office has to do this for you.',
     confirm: 'Contact my office',
+    draft: 'Please delete my account and login for this app.',
   },
 
   passwordChanged: {
@@ -568,6 +570,13 @@ export const training = {
   inProgress: 'In progress',
   completed: 'Completed',
   completedOn: date => `Completed ${date}`,
+
+  // On the Duty screen, when something is outstanding
+  waitingOne: 'A course is waiting for you',
+  waitingMany: (n) => `${n} courses are waiting for you`,
+  waitingHint: 'Tap to start it',
+  waitingHintMany: 'Tap to see them',
+  waitingOverdue: (n) => `${n} ${n === 1 ? 'is' : 'are'} overdue`,
 
   // The course screen
   aboutThis: 'About this course',
@@ -631,6 +640,9 @@ export const notifications = {
   emptyHint: 'New routes, truck changes and messages from your office appear here.',
   markAllRead: 'Mark all read',
   unread: (n) => (n === 1 ? '1 new' : `${n} new`),
+  trayChannel: 'Alerts',
+  trayChannelHint: 'New routes, truck changes and messages from your office.',
+  trayFallback: 'Open the app to see what changed.',
   newMessage: 'New message',
   newMessageBody: 'Your fleet office sent you a message.',
   newRoute: 'New route',

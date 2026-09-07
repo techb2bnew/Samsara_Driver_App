@@ -14,7 +14,8 @@ import { useAuth } from './AuthContext';
 import { useSettings } from './SettingsContext';
 import { useShift } from './ShiftContext';
 import { currentStatus, segmentsForDay } from '../helpers/duty';
-import { drivingSinceBreak, limitsFor, regulatorFrom } from '../helpers/hosLimits';
+import { drivingSinceBreak } from '../helpers/hosLimits';
+import { askPermission, clearUnread, showUnread } from '../helpers/badge';
 
 /**
  * What the driver has not seen yet.
@@ -112,14 +113,13 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
   useEffect(() => {
     if (!profile || !settings.notifyBreakReminder) return;
 
-    const book = regulatorFrom(profile.regulator);
-    if (!book) return;
+    const limits = profile.limits;
+    if (!limits) return;
 
     const active = currentStatus(events);
     if (active?.status !== 'driving') return;
 
     const now = new Date();
-    const limits = limitsFor(book);
     const driven = drivingSinceBreak(segmentsForDay(events, now, now), limits);
     const left = limits.drivingBeforeBreak - driven;
 
@@ -157,20 +157,33 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     try {
       const count = await api.unreadMessageCount(profile.driverId);
       setUnreadMessages(count);
-      if (count > 0) {
+
+      if (count === 0) {
         /*
-         * One entry for "you have unread messages", keyed by the count. A
-         * separate row per message would bury the other kinds — twelve
-         * messages is one thing to go and read, not twelve things to dismiss.
+         * Read, so it is not news any more.
+         *
+         * Every other kind here is a thing that happened and stays happened —
+         * a route was assigned, a truck changed. "You have unread messages" is
+         * the one entry that describes a STATE, and leaving it in the list
+         * after the driver has read the thread means the bell keeps a count
+         * for something already dealt with.
          */
-        push({
-          id: `message-${count}`,
-          kind: 'message',
-          title: t.newMessage,
-          body: t.newMessageBody,
-          at: new Date().toISOString(),
-        });
+        setItems(current => current.filter(i => i.kind !== 'message'));
+        return;
       }
+
+      /*
+       * One entry for "you have unread messages", keyed by the count. A
+       * separate row per message would bury the other kinds — twelve messages
+       * is one thing to go and read, not twelve things to dismiss.
+       */
+      push({
+        id: `message-${count}`,
+        kind: 'message',
+        title: t.newMessage,
+        body: t.newMessageBody,
+        at: new Date().toISOString(),
+      });
     } catch {
       // A count is not worth surfacing an error over.
     }
@@ -285,8 +298,37 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     return () => stop.forEach(off => off());
   }, [profile, refreshMessages, refreshRoute, refreshVehicle]);
 
+  /*
+   * Derived here rather than inside the memo below, because the app icon and
+   * the in-app bell have to show the same number. Two places computing "what
+   * has not been seen" is how a phone ends up with a 3 on the icon and an
+   * empty notifications list, and the driver stops trusting either.
+   */
+  const unread = useMemo(() => items.filter(i => !seen.has(i.id)), [items, seen]);
+
+  /*
+   * Permission is asked for once, after sign-in. See helpers/badge.
+   */
+  useEffect(() => {
+    if (!profile) return;
+    askPermission();
+  }, [profile]);
+
+  /*
+   * The icon follows the bell.
+   *
+   * Signing out clears it rather than leaving the last count behind: a work
+   * phone changes hands, and a badge nobody can open is worse than no badge.
+   */
+  useEffect(() => {
+    if (!profile) {
+      clearUnread();
+      return;
+    }
+    showUnread(unread.length, unread[0]?.title ?? null);
+  }, [profile, unread]);
+
   const value = useMemo<NotificationValue>(() => {
-    const unread = items.filter(i => !seen.has(i.id));
     return {
       items,
       unreadCount: unread.length,
@@ -299,7 +341,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
       },
       refresh,
     };
-  }, [items, seen, unreadMessages, refresh]);
+  }, [items, seen, unread, unreadMessages, refresh]);
 
   return (
     <NotificationContext.Provider value={value}>{children}</NotificationContext.Provider>

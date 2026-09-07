@@ -4,6 +4,8 @@ import { DutyHomeScreen } from '../screens/duty/DutyHomeScreen';
 import { VehiclePickerScreen } from '../screens/duty/VehiclePickerScreen';
 import { DayLogScreen } from '../screens/duty/DayLogScreen';
 import { RequestCorrectionScreen } from '../screens/me/RequestCorrectionScreen';
+import { TrainingScreen } from '../screens/me/TrainingScreen';
+import { CourseScreen } from '../screens/me/CourseScreen';
 import { NotificationsScreen } from '../screens/me/NotificationsScreen';
 import { homeScreenOptions, nestedScreenOptions } from './screenOptions';
 import { screenTitles } from '../constans/Constants';
@@ -31,6 +33,16 @@ export function DutyStack() {
         name="DayLog"
         component={DayLogScreen}
         options={{ title: screenTitles.dayLog }}
+      />
+      <Stack.Screen
+        name="Training"
+        component={TrainingScreen}
+        options={{ title: screenTitles.training }}
+      />
+      <Stack.Screen
+        name="Course"
+        component={CourseScreen}
+        options={{ title: screenTitles.course }}
       />
       <Stack.Screen
         name="RequestCorrection"

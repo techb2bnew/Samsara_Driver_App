@@ -1171,6 +1171,56 @@ export type Database = {
           },
         ]
       }
+      hos_rule_books: {
+        Row: {
+          break_length_minutes: number
+          created_at: string
+          cycle_days: number
+          cycle_minutes: number
+          daily_driving_minutes: number
+          driving_before_break_minutes: number
+          duty_window_minutes: number | null
+          id: string
+          name: string
+          org_id: string
+          updated_at: string
+        }
+        Insert: {
+          break_length_minutes: number
+          created_at?: string
+          cycle_days: number
+          cycle_minutes: number
+          daily_driving_minutes: number
+          driving_before_break_minutes: number
+          duty_window_minutes?: number | null
+          id?: string
+          name: string
+          org_id: string
+          updated_at?: string
+        }
+        Update: {
+          break_length_minutes?: number
+          created_at?: string
+          cycle_days?: number
+          cycle_minutes?: number
+          daily_driving_minutes?: number
+          driving_before_break_minutes?: number
+          duty_window_minutes?: number | null
+          id?: string
+          name?: string
+          org_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "hos_rule_books_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       invitations: {
         Row: {
           accepted_at: string | null
@@ -1401,6 +1451,7 @@ export type Database = {
           deleted_at: string | null
           dot_number: string | null
           hos_regulator: string | null
+          hos_rule_book_id: string | null
           id: string
           legal_name: string | null
           logo_url: string | null
@@ -1416,6 +1467,7 @@ export type Database = {
           deleted_at?: string | null
           dot_number?: string | null
           hos_regulator?: string | null
+          hos_rule_book_id?: string | null
           id?: string
           legal_name?: string | null
           logo_url?: string | null
@@ -1431,6 +1483,7 @@ export type Database = {
           deleted_at?: string | null
           dot_number?: string | null
           hos_regulator?: string | null
+          hos_rule_book_id?: string | null
           id?: string
           legal_name?: string | null
           logo_url?: string | null
@@ -1440,7 +1493,15 @@ export type Database = {
           timezone?: string
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "organizations_hos_rule_book_id_fkey"
+            columns: ["hos_rule_book_id"]
+            isOneToOne: false
+            referencedRelation: "hos_rule_books"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       roles: {
         Row: {
@@ -2139,6 +2200,7 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      audit_actor: { Args: never; Returns: string }
       current_driver_fleet_id: { Args: never; Returns: string }
       current_driver_id: { Args: never; Returns: string }
       current_driver_org_id: { Args: never; Returns: string }

@@ -17,7 +17,7 @@ import {
 import { violations as t } from '../../constans/Constants';
 import { heightPercentageToDP as hp } from '../../utils';
 import { isoDate, segmentsForDay } from '../../helpers/duty';
-import { cycleDaysFor, regulatorFrom } from '../../helpers/hosLimits';
+
 import { violationsForDay, type Violation } from '../../helpers/violations';
 import { useNow } from '../../hooks/useNow';
 import { useAuth } from '../../context/AuthContext';
@@ -41,7 +41,7 @@ export function MyViolationsScreen() {
   const { events, earliestDate } = useShift();
   const now = useNow();
 
-  const book = regulatorFrom(profile?.regulator ?? null);
+  const book = profile?.limits ?? null;
 
   const found = useMemo<Violation[]>(() => {
     if (!book) return [];
@@ -51,7 +51,7 @@ export function MyViolationsScreen() {
      * days before it — so a day is judged against what had actually happened
      * by then, not against the whole eight days including its own future.
      */
-    const cycleDays = cycleDaysFor(book);
+    const cycleDays = book.cycleDays;
     const out: Violation[] = [];
 
     const cursor = new Date(now);

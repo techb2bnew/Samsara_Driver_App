@@ -70,6 +70,34 @@ export function limitsFor(regulator: Regulator): Limits {
   return LIMITS[regulator];
 }
 
+/**
+ * A rule book the fleet wrote for itself, as it comes out of the database.
+ *
+ * Kept separate from limitsFor rather than folded in with it. The two built-in
+ * regimes are checked against the regulations they cite; these are whatever
+ * the office typed into a form. Two functions means the call site always shows
+ * which kind is in hand.
+ */
+export type RuleBookRow = {
+  daily_driving_minutes: number;
+  duty_window_minutes: number | null;
+  driving_before_break_minutes: number;
+  break_length_minutes: number;
+  cycle_minutes: number;
+  cycle_days: number;
+};
+
+export function limitsFromRuleBook(row: RuleBookRow): Limits {
+  return {
+    dailyDriving: row.daily_driving_minutes,
+    dutyWindow: row.duty_window_minutes,
+    drivingBeforeBreak: row.driving_before_break_minutes,
+    breakLength: row.break_length_minutes,
+    cycle: row.cycle_minutes,
+    cycleDays: row.cycle_days,
+  };
+}
+
 export function cycleDaysFor(regulator: Regulator): number {
   return LIMITS[regulator].cycleDays;
 }
@@ -140,13 +168,12 @@ export type Recap = {
  * oldest first. Passed in rather than fetched so this stays a pure function.
  */
 export function recapFor(
-  regulator: Regulator | null,
+  limits: Limits | null,
   today: Segment[],
   cycleWindow: Segment[][],
 ): Recap {
-  if (!regulator) return { onDuty: null, driving: null, breakIn: null, cycle: null };
+  if (!limits) return { onDuty: null, driving: null, breakIn: null, cycle: null };
 
-  const limits = LIMITS[regulator];
   const left = (limit: number, used: number) => Math.max(0, limit - used);
 
   return {

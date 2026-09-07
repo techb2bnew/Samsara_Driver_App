@@ -19,6 +19,7 @@ import {
   dangerColor,
   onAccent,
   textDark,
+  textFaint,
   textMuted,
 } from '../../constans/Color';
 import { me as t, modal, notifications as n, screenTitles } from '../../constans/Constants';
@@ -26,7 +27,8 @@ import { personName } from '../../helpers/names';
 import { useAuth } from '../../context/AuthContext';
 import { useShift } from '../../context/ShiftContext';
 import { useNotifications } from '../../context/NotificationContext';
-import type { MeStackParams } from '../../navigation/types';
+import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
+import type { MeStackParams, TabParams } from '../../navigation/types';
 
 type Props = NativeStackScreenProps<MeStackParams, 'MeHome'>;
 
@@ -84,14 +86,34 @@ export function MeHomeScreen({ navigation }: Props) {
                 style={[fontStyle.fontSizeNormal2x, fontStyle.fontWeightMedium, styles.name]}>
                 {name || '—'}
               </Text>
+              {/*
+                Falls back to the fleet's name, not a dash.
+
+                Employee number is optional and a driver may not be placed at a
+                depot yet, so both halves of this line are routinely empty —
+                and it was showing a bare "—" between the driver's name and
+                their truck, which reads as something having failed to load.
+                The organisation always has a name, and "who you drive for" is
+                worth a line on a profile card.
+              */}
               <Text style={[fontStyle.fontSizeSmall2x, styles.meta]}>
-                {[profile?.employeeNumber, profile?.depotName].filter(Boolean).join(' · ') || '—'}
+                {[profile?.employeeNumber, profile?.depotName].filter(Boolean).join(' · ') ||
+                  profile?.orgName ||
+                  ''}
               </Text>
-              {Boolean(vehicle) && (
-                <Text style={[fontStyle.fontSizeSmall2x, styles.truck]}>
-                  {vehicle!.name} · {vehicle!.plate}
-                </Text>
-              )}
+
+              {/*
+                And the truck says so when there isn't one. It vanished before,
+                which left the card looking finished while the driver was in
+                the one state that stops them going on duty.
+              */}
+              <Text
+                style={[
+                  fontStyle.fontSizeSmall2x,
+                  vehicle ? styles.truck : styles.noTruck,
+                ]}>
+                {vehicle ? `${vehicle.name} · ${vehicle.plate}` : t.noTruck}
+              </Text>
             </View>
           </View>
         </Card>
@@ -121,16 +143,39 @@ export function MeHomeScreen({ navigation }: Props) {
             title={t.logs}
             onPress={() => navigation.navigate('MyLogs')}
           />
-          <ListRow
-            icon={icons.inspect}
-            title={t.inspections}
-            onPress={() => navigation.navigate('MyInspections')}
-          />
-          <ListRow
-            icon={icons.warning}
-            title={t.faults}
-            onPress={() => navigation.navigate('MyFaults')}
-          />
+          {/*
+            My inspections and My fault reports are hidden, not deleted.
+
+            Both read the far end of a chain that starts with an inspection
+            form, and there is no form to start it: the console's form builder
+            is switched off, so nobody can make one, so no driver can submit an
+            inspection, so no defect is ever raised from one. Two rows that can
+            only ever open an empty list are worse than two rows that are not
+            there — a driver taps them looking for the fault they reported last
+            week and concludes the app has lost it.
+
+            The screens, their routes and their queries are all left in place
+            and still compiled, so this is a link away from coming back. Turn
+            the Forms module on and put these two rows back with it.
+
+            <ListRow
+              icon={icons.inspect}
+              title={t.inspections}
+              onPress={() => navigation.navigate('MyInspections')}
+            />
+            <ListRow
+              icon={icons.warning}
+              title={t.faults}
+              onPress={() => navigation.navigate('MyFaults')}
+            />
+          */}
+
+          {/*
+            My violations stays. It is the one of the three that does not
+            depend on a form: it is worked out from the driver's own duty taps
+            against the rule book, so it starts filling in the moment somebody
+            drives.
+          */}
           <ListRow
             icon={icons.alert}
             title={t.violations}
@@ -209,7 +254,26 @@ export function MeHomeScreen({ navigation }: Props) {
         confirmLabel={modal.deleteAccount.confirm}
         icon={icons.alert}
         tone="danger"
-        onConfirm={() => setDeleting(false)}
+        /*
+         * Opens the thread with the request already written.
+         *
+         * This closed the dialog and did nothing else, so a driver who wanted
+         * their account gone tapped a button labelled "Contact my office" and
+         * was returned to the same screen, none the wiser about how to.
+         *
+         * The message thread is the right destination rather than a phone
+         * number or a mailto: — it is the channel the office already reads,
+         * it needs no dialler or mail account on a work handset, and it
+         * leaves a record on both sides of a request that has to be actioned
+         * by a person.
+         */
+        onConfirm={() => {
+          setDeleting(false);
+          navigation.getParent<BottomTabNavigationProp<TabParams>>()?.navigate('MessagesTab', {
+            screen: 'MessagesHome',
+            params: { draft: modal.deleteAccount.draft },
+          });
+        }}
         onCancel={() => setDeleting(false)}
       />
     </SafeAreaView>
@@ -230,6 +294,7 @@ const styles = StyleSheet.create({
   name: { color: textDark },
   meta: { color: textMuted, marginTop: spacings.xxsmall },
   truck: { color: accentColor, marginTop: spacings.xxsmall },
+  noTruck: { color: textFaint, marginTop: spacings.xxsmall },
   section: {
     color: textMuted,
     letterSpacing: 1.1,

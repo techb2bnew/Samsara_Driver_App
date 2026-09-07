@@ -1,6 +1,6 @@
 import type { Band, Segment } from './duty';
 import { drivingMinutes, formatClock, onDutyMinutes } from './duty';
-import { limitsFor, type Regulator } from './hosLimits';
+import { type Limits } from './hosLimits';
 
 /**
  * Judging a driver's day against the rule book.
@@ -102,14 +102,13 @@ function drivingWithoutBreak(segments: Segment[], breakLength: number): number {
  * resting, and a cycle total on its own is not a breach.
  */
 export function violationsForDay(
-  regulator: Regulator,
+  limits: Limits,
   isoDate: string,
   today: Segment[],
   cycleWindow: Segment[][],
 ): Violation[] {
   if (today.length === 0) return [];
 
-  const limits = limitsFor(regulator);
   const out: Violation[] = [];
 
   const driving = drivingMinutes(today);

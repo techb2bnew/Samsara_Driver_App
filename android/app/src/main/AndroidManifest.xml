@@ -15,6 +15,14 @@
 
          The gallery needs no permission either, for the same reason: the
          system picker returns one file the driver picked. -->
+    <!--
+      Declared because Android 13 and up will not even ASK without it, and
+      notifee does not declare it itself. This is not the camera case: there,
+      the library needed no permission and declaring it made Android demand one
+      that nothing used. Here the OS genuinely gates the feature, and a badge
+      on the app icon is a notification as far as Android is concerned.
+    -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
 

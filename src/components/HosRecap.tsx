@@ -34,7 +34,23 @@ export function HosRecap({ recap }: { recap: Recap }) {
     [t.recap.cycle, recap.cycle],
   ];
 
+  /*
+   * All four null means no rule book has been chosen. Some null means the rule
+   * book has no such rule — EU has no duty-window limit at all, so that clock
+   * cannot have a figure however the day went.
+   */
   const known = cells.some(([, value]) => value !== null);
+
+  /*
+   * A cell that can never have a value is dropped rather than shown as a dash.
+   *
+   * On EU that was one dash sitting among three figures with nothing to say
+   * why, and a driver reading it has no way to tell "there is no such rule"
+   * from "this is broken". With no rule book at all every cell is a dash and
+   * the note underneath explains it, which is a different thing and reads as
+   * one.
+   */
+  const shown = known ? cells.filter(([, value]) => value !== null) : cells;
 
   return (
     <View style={styles.card}>
@@ -42,7 +58,7 @@ export function HosRecap({ recap }: { recap: Recap }) {
         {t.recap.hoursLeft.toUpperCase()}
       </Text>
       <View style={[BaseStyle.flexDirectionRow, BaseStyle.flexWrap]}>
-        {cells.map(([label, value]) => (
+        {shown.map(([label, value]) => (
           <View key={label} style={[BaseStyle.alignItemsFlexStart, styles.cell]}>
             <Text style={[fontStyle.fontSizeExtraSmall, styles.label]}>{label}</Text>
             <Text

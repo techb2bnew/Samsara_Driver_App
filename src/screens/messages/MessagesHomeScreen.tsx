@@ -1,4 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import type { MessagesStackParams } from '../../navigation/types';
 import {
   ActivityIndicator,
   FlatList,
@@ -11,7 +13,7 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useFocusEffect } from '@react-navigation/native';
+import { useIsFocused } from '@react-navigation/native';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { AppIcon, EmptyState, icons } from '../../components';
 import { BaseStyle } from '../../constans/Style';
@@ -103,7 +105,9 @@ function useComposerLift(tabBarHeight: number, bottomInset: number): number {
  * effect — switching away and back does not remount — is exactly where a
  * stale thread would sit unnoticed.
  */
-export function MessagesHomeScreen() {
+type Props = NativeStackScreenProps<MessagesStackParams, 'MessagesHome'>;
+
+export function MessagesHomeScreen({ route, navigation }: Props) {
   const { state } = useAuth();
   const profile = state.status === 'signedIn' ? state.profile : null;
 
@@ -115,9 +119,51 @@ export function MessagesHomeScreen() {
   const lift = useComposerLift(tabBarHeight, bottomInset);
 
   const [draft, setDraft] = useState('');
+
+  /*
+   * A message another screen asked us to start with.
+   *
+   * Cleared off the route as soon as it is applied, for two reasons: this tab
+   * never unmounts, so without clearing it the same text would reappear over
+   * whatever the driver had typed every time they came back to it; and a
+   * driver who deliberately clears the box should not have it refilled.
+   *
+   * Only ever seeded into an empty composer — half a typed message is worth
+   * more than anything a dialog wanted to say.
+   */
+  const seeded = route.params?.draft;
+  useEffect(() => {
+    if (!seeded) return;
+    setDraft(current => (current.length === 0 ? seeded : current));
+    navigation.setParams({ draft: undefined });
+  }, [seeded, navigation]);
   const [sending, setSending] = useState(false);
   const [focused, setFocused] = useState(false);
-  const marked = useRef(false);
+  /*
+   * Whether a read receipt is already in flight.
+   *
+   * This used to be `marked`, a latch set once per mount — and a tab navigator
+   * never unmounts its screens. So the driver opened Messages, the thread was
+   * marked read, and every message that arrived afterwards left the tab badge
+   * showing a count while they sat there reading it. The latch could only ever
+   * fire once in the life of the app.
+   *
+   * In-flight instead of once-only: it stops two receipts racing on the same
+   * message without ever stopping the next one.
+   */
+  const marking = useRef(false);
+
+  /*
+   * Focus decides whether reading counts as read.
+   *
+   * The socket calls load() whether or not this screen is on top, because the
+   * tab navigator keeps it mounted. Marking read from there would clear the
+   * badge for a message the driver never saw — the opposite mistake, and the
+   * worse one.
+   */
+  const onScreen = useIsFocused();
+  const onScreenRef = useRef(onScreen);
+  onScreenRef.current = onScreen;
 
   const load = useCallback(async () => {
     if (!profile) return;
@@ -126,11 +172,23 @@ export function MessagesHomeScreen() {
       const rows = await api.loadMessages(profile.driverId);
       setThread(rows);
 
-      if (!marked.current && rows.some(m => m.direction === 'to_driver' && !m.readAt)) {
-        marked.current = true;
-        // Not awaited: a read receipt is not worth making the driver wait, and
-        // a failure leaves it unread, which is the safe direction.
-        api.markMessagesRead(profile.driverId).catch(() => {});
+      const unread = rows.some(m => m.direction === 'to_driver' && !m.readAt);
+      if (unread && onScreenRef.current && !marking.current) {
+        marking.current = true;
+        /*
+         * Not awaited: a read receipt is not worth making the driver wait, and
+         * a failure leaves it unread, which is the safe direction.
+         *
+         * The write updates the same rows this screen is watching, so the
+         * socket fires again, load() runs, and there is nothing unread left to
+         * mark — which is what ends the cycle rather than a flag.
+         */
+        api
+          .markMessagesRead(profile.driverId)
+          .catch(() => {})
+          .finally(() => {
+            marking.current = false;
+          });
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : t.failed);
@@ -138,6 +196,17 @@ export function MessagesHomeScreen() {
       setLoading(false);
     }
   }, [profile]);
+
+  /*
+   * Coming back to the tab with something already unread.
+   *
+   * load() alone is not enough here: the rows may already be in state from a
+   * socket update that arrived while the driver was on another tab, and
+   * nothing would re-run the check.
+   */
+  useEffect(() => {
+    if (onScreen) load();
+  }, [onScreen, load]);
 
   useEffect(() => {
     load();
@@ -154,13 +223,11 @@ export function MessagesHomeScreen() {
     });
   }, [profile, load]);
 
-  // The safety net for a dropped socket. A tab navigator keeps its screens
-  // mounted, so this is the only thing that runs when the driver comes back.
-  useFocusEffect(
-    useCallback(() => {
-      load();
-    }, [load]),
-  );
+  /*
+   * The safety net for a dropped socket used to be a useFocusEffect here. The
+   * effect above already loads on focus — keeping both meant two round trips
+   * every time the tab was opened.
+   */
 
   async function send() {
     const body = draft.trim();

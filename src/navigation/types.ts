@@ -1,3 +1,4 @@
+import type { NavigatorScreenParams } from '@react-navigation/native';
 /**
  * Route names and their params, one list per navigator.
  *
@@ -37,6 +38,13 @@ export type DutyStackParams = {
    * the log, not be thrown into another tab.
    */
   RequestCorrection: { eventId: string } | undefined;
+  /*
+   * Also in Me, like the others above. The Duty screen shows a card when
+   * training is outstanding, and a driver who taps it should come back to the
+   * screen they were on rather than being left in another tab.
+   */
+  Training: undefined;
+  Course: { assignmentId: string };
 };
 
 export type RouteStackParams = {
@@ -62,7 +70,12 @@ export type InspectStackParams = {
 };
 
 export type MessagesStackParams = {
-  MessagesHome: undefined;
+  /*
+   * `draft` seeds the composer. Used by "Contact my office" on the delete-
+   * account dialog, which has to hand the driver a message they can send
+   * rather than an empty thread and a question to work out for themselves.
+   */
+  MessagesHome: { draft?: string } | undefined;
 };
 
 export type MeStackParams = {
@@ -103,6 +116,7 @@ export type TabParams = {
   DutyTab: undefined;
   RouteTab: undefined;
   InspectTab: undefined;
-  MessagesTab: undefined;
+  /* Nested, so another tab can open the thread with a message ready. */
+  MessagesTab: NavigatorScreenParams<MessagesStackParams> | undefined;
   MeTab: undefined;
 };

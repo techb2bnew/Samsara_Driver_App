@@ -6,6 +6,7 @@ import React, {
   useMemo,
   useState,
 } from 'react';
+import { AppState } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '../supabase';
 import * as api from '../supabase/api';
@@ -88,7 +89,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         resolve();
       }
     });
-    return () => sub.subscription.unsubscribe();
+
+    /*
+     * Re-read on return to the foreground.
+     *
+     * The profile carries things the OFFICE owns: the depot, the timezone, and
+     * the hours rule book the whole HOS strip is calculated from. Read once at
+     * sign-in and never again, so an office that chose FMCSA on Tuesday
+     * changed nothing on a phone that had been signed in since Monday — the
+     * driver's remaining-hours clocks stayed dashes and nothing anywhere
+     * explained why. Signing out and back in was the only cure, and nobody
+     * would guess it.
+     *
+     * Coming back to the app is the natural moment: one query, and it covers
+     * the case that actually happens — a setting changed while the phone was
+     * in a pocket. Not a socket subscription, because a rule book changes
+     * about once a year.
+     */
+    const app = AppState.addEventListener('change', (next) => {
+      if (next === 'active') resolve();
+    });
+
+    return () => {
+      sub.subscription.unsubscribe();
+      app.remove();
+    };
   }, [resolve]);
 
   const value = useMemo<AuthValue>(

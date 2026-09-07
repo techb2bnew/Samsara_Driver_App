@@ -19,6 +19,15 @@
 
 import { supabase } from './client';
 import type { Json } from './database';
+import { displayName } from '../helpers/names';
+import { base64ToBytes } from '../helpers/base64';
+import {
+  limitsFor,
+  limitsFromRuleBook,
+  regulatorFrom,
+  type Limits,
+  type RuleBookRow,
+} from '../helpers/hosLimits';
 
 /* ========================================================================
    Who am I
@@ -32,6 +41,26 @@ export type DriverProfile = {
   timezone: string;
   /** FMCSA, EU, or null when the office has not chosen a rule book. */
   regulator: string | null;
+  /*
+   * The limits actually in force, whichever kind of rule book they came from.
+   *
+   * Resolved here rather than on each screen, because there are now two places
+   * they can come from — a built-in regime, or a rule book the fleet wrote for
+   * itself — and three screens working that out separately is three chances to
+   * disagree about what a driver's day is allowed to be.
+   *
+   * Null when the office has chosen nothing, which is what puts a dash on
+   * every clock.
+   */
+  limits: Limits | null;
+  /*
+   * Set only when the fleet is on its own rule book, and shown to the driver.
+   *
+   * Deliberate: hand-typed limits must never look like the law. A driver
+   * reading "9h30 left" is entitled to know whether that came from a
+   * regulation or from their office's own policy.
+   */
+  ruleBookName: string | null;
   firstName: string;
   lastName: string;
   employeeNumber: string | null;
@@ -70,7 +99,7 @@ export async function loadProfile(): Promise<DriverProfile | null> {
   const [org, depot] = await Promise.all([
     supabase
       .from('organizations')
-      .select('name, timezone, hos_regulator')
+      .select('name, timezone, hos_regulator, hos_rule_book_id')
       .eq('id', data.org_id)
       .maybeSingle(),
     data.fleet_id
@@ -80,6 +109,30 @@ export async function loadProfile(): Promise<DriverProfile | null> {
 
   if (org.error) throw new Error(org.error.message);
 
+  /*
+   * A third read, and only when there is something to read. A custom rule book
+   * is the exception rather than the rule, so this costs nothing for the fleets
+   * on FMCSA or the EU regulation.
+   */
+  let custom: RuleBookRow | null = null;
+  let customName: string | null = null;
+  if (org.data?.hos_rule_book_id) {
+    const book = await supabase
+      .from('hos_rule_books')
+      .select(
+        'name, daily_driving_minutes, duty_window_minutes, driving_before_break_minutes, break_length_minutes, cycle_minutes, cycle_days',
+      )
+      .eq('id', org.data.hos_rule_book_id)
+      .maybeSingle();
+    if (book.error) throw new Error(book.error.message);
+    if (book.data) {
+      custom = book.data;
+      customName = book.data.name;
+    }
+  }
+
+  const builtIn = regulatorFrom(org.data?.hos_regulator ?? null);
+
   return {
     driverId: data.id,
     orgId: data.org_id,
@@ -88,11 +141,17 @@ export async function loadProfile(): Promise<DriverProfile | null> {
     // office creates them, and can be overridden for a secondment.
     timezone: data.timezone || org.data?.timezone || 'UTC',
     regulator: org.data?.hos_regulator ?? null,
+    /* A custom book wins. The two columns are mutually exclusive by
+       construction in the console, so this only decides what happens to any
+       row written before that was true. */
+    limits: custom ? limitsFromRuleBook(custom) : builtIn ? limitsFor(builtIn) : null,
+    ruleBookName: customName,
     firstName: data.first_name,
     lastName: data.last_name,
     employeeNumber: data.employee_number,
     depotId: data.fleet_id,
-    depotName: (depot.data as { name: string } | null)?.name ?? null,
+    // Same treatment as a person's name: typed once, read every shift.
+    depotName: displayName((depot.data as { name: string } | null)?.name) || null,
   };
 }
 
@@ -1570,8 +1629,8 @@ export async function uploadTripDocument(
   input: {
     docType: TripDocType;
     title: string;
-    /** A local file:// path from the picker. */
-    uri: string;
+    /** The file's contents, base64, straight from the picker. */
+    base64: string;
     fileName: string;
     mimeType: string;
     vehicleId?: string | null;
@@ -1583,14 +1642,17 @@ export async function uploadTripDocument(
   const path = `${orgId}/trip/${driverId}/${randomId()}-${safeName}`;
 
   /*
-   * Read as an ArrayBuffer rather than handed the uri.
+   * Decoded from base64, not read from the uri.
    *
-   * supabase-js has no React Native file handle to work from, and passing
-   * FormData here uploads zero bytes on Android — silently, with a 200 back.
-   * fetch on a file:// uri is the one path that works on both platforms.
+   * `fetch(uri).then(r => r.arrayBuffer())` is what Supabase's own React
+   * Native example does, and in a bare app it resolves with an EMPTY buffer —
+   * no error, a zero-byte object stored, and a driver told their paperwork was
+   * sent. FormData is no better: it uploads nothing on Android and answers 200.
+   *
+   * So the picker hands over the contents and this turns them into bytes.
    */
-  const response = await fetch(input.uri);
-  const bytes = await response.arrayBuffer();
+  const bytes = base64ToBytes(input.base64);
+  if (bytes.length === 0) throw new Error('That photo could not be read.');
 
   const upload = await supabase.storage.from('documents').upload(path, bytes, {
     contentType: input.mimeType,

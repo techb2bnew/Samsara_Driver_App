@@ -82,7 +82,7 @@ export function AddPaperworkScreen({ route, navigation }: Props) {
       await api.uploadTripDocument(profile.orgId, profile.driverId, {
         docType,
         title: label,
-        uri: picture.uri,
+        base64: picture.base64,
         fileName: picture.fileName,
         mimeType: picture.mimeType,
         /*
