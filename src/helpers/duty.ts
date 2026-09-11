@@ -85,6 +85,26 @@ export function minutesSince(iso: string, now: Date = new Date()): number {
   return Math.max(0, Math.floor((now.getTime() - new Date(iso).getTime()) / 60_000));
 }
 
+/**
+ * Work done since the driver last rested, up to now.
+ *
+ * Walked backwards from the end of the day so far, stopping at the first rest.
+ * This is what a fleet's "work before a break" rule is measured against — the
+ * violation engine asks the same question of a completed rest, and this asks
+ * it of the moment the driver is about to take one.
+ */
+export function workSinceRest(segments: Segment[]): number {
+  const ordered = [...segments].sort((a, b) => a.from - b.from);
+
+  let total = 0;
+  for (let i = ordered.length - 1; i >= 0; i -= 1) {
+    const s = ordered[i];
+    if (s.band === 'off' || s.band === 'sleeper') break;
+    total += Math.max(0, s.to - s.from);
+  }
+  return total;
+}
+
 /** Minutes in each band. */
 export function totals(segments: Segment[]): Record<Band, number> {
   const out: Record<Band, number> = { off: 0, sleeper: 0, driving: 0, on_duty: 0 };
@@ -135,8 +155,27 @@ export function longestBreakMinutes(segments: Segment[]): number {
 }
 
 /** "8.5" — decimal hours, the way the totals column on a paper log reads. */
-export function formatHours(minutes: number): string {
-  return (Math.round((Math.max(0, minutes) / 60) * 10) / 10).toFixed(1);
+/*
+ * formatHours is gone.
+ *
+ * It rendered minutes as decimal hours — "9.5", and worse "0.1" for six
+ * minutes — and the duty graph was the only thing that called it. Every other
+ * figure on the same screen, the tiles directly beneath the graph included,
+ * used formatClock. So one number appeared twice on one screen in two
+ * formats, and the graph's was the one nobody can read as time: a log is kept
+ * in hours and minutes, and "0.1" is neither.
+ */
+
+/**
+ * "07:26" — the same figure with the hour padded to two digits.
+ *
+ * For the totals down the side of the duty graph, where the figures form a
+ * column and a one-digit hour left them ragged against the two-digit ones.
+ * Every ELD screen and every paper log pads them for the same reason.
+ */
+export function formatClockPadded(minutes: number): string {
+  const safe = Math.max(0, Math.round(minutes));
+  return `${String(Math.floor(safe / 60)).padStart(2, '0')}:${String(safe % 60).padStart(2, '0')}`;
 }
 
 /** "7:26" — hours and minutes, the way a log book reads. */

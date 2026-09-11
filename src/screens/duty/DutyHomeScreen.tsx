@@ -36,13 +36,21 @@ import {
   textFaint,
   textMuted,
 } from '../../constans/Color';
-import { common, dayLog, duty as t, screenTitles, training } from '../../constans/Constants';
+import {
+  common,
+  dayLog,
+  duty as t,
+  modal,
+  screenTitles,
+  training,
+} from '../../constans/Constants';
 import { heightPercentageToDP as hp, widthPercentageToDP as wp } from '../../utils';
 import { useShift } from '../../context/ShiftContext';
 import {
   currentStatus,
   drivingMinutes,
   formatClock,
+  workSinceRest,
   formatTime,
   isoDate,
   longestBreakMinutes,
@@ -132,6 +140,16 @@ export function DutyHomeScreen({ navigation }: Props) {
     (c) => c.dueOn !== null && c.dueOn < new Date().toISOString().slice(0, 10),
   ).length;
   const [confirming, setConfirming] = useState(false);
+  /*
+   * A break the fleet's own rule book says has not been earned yet.
+   *
+   * Held rather than blocked. The driver is the one who knows whether they
+   * need to stop — they may be unwell, or the yard may have sent them away —
+   * and an app that refuses to record what actually happened produces a false
+   * log, which is worse than a breach honestly written down. So it warns,
+   * records what they chose, and the violation engine reports it.
+   */
+  const [earlyBreak, setEarlyBreak] = useState<DutyStatus | null>(null);
   const [certifying, setCertifying] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
 
@@ -186,32 +204,52 @@ export function DutyHomeScreen({ navigation }: Props) {
   const certified = certifiedDates.has(viewKey);
 
   /*
-   * The cycle total needs every day in the window, not just today. Built here
-   * from the same events the graph draws, so the strip and the grid can never
-   * disagree about what a day contained.
-   */
-  /*
-   * The remaining-hours strip is only meaningful for today: "10:50 driving
-   * left" is a statement about right now, and showing it on a past day would
-   * be telling a driver how much they can still drive on a day that is over.
+   * The remaining-hours strip, for whichever day is on screen.
+   *
+   * It used to be today only, on the reasoning that "10:50 driving left" is a
+   * statement about right now. That was half right: the figure is the same
+   * arithmetic on any day — limit minus what was used — and on a finished day
+   * it answers a question a driver asks at least as often, which is how close
+   * they came. What changes is the heading, not the numbers.
+   *
+   * The cycle window ends on the day being viewed, not on today, or Tuesday's
+   * cycle figure would be Sunday's.
    */
   const recap = useMemo(() => {
-    if (!isToday) return null;
-
     const book = profile?.limits ?? null;
     if (!book) return recapFor(null, segments, []);
 
     const days: ReturnType<typeof segmentsForDay>[] = [];
     for (let back = book.cycleDays - 1; back >= 0; back--) {
-      const day = new Date(today);
-      day.setDate(today.getDate() - back);
+      const day = new Date(viewDate);
+      day.setDate(viewDate.getDate() - back);
       days.push(segmentsForDay(events, day, today));
     }
     return recapFor(book, segments, days);
-  }, [isToday, profile?.limits, events, segments, today]);
+  }, [profile?.limits, events, segments, today, viewDate]);
   const activeEvent = currentStatus(events);
   const activeStatus = activeEvent?.status ?? null;
   const activeChoice = CHOICES.find(c => c.status === activeStatus) ?? CHOICES[0];
+
+  /* Only on a rule book that has the rule, which is a fleet's own. */
+  const minWork = profile?.limits?.minWorkBeforeBreak ?? null;
+  const workedSinceRest = isToday ? workSinceRest(segments) : 0;
+
+  function breakIsEarly(status: DutyStatus): boolean {
+    if (minWork === null) return false;
+    if (status !== 'off_duty' && status !== 'sleeper_berth') return false;
+    /* Nothing worked yet is the start of a shift, not an early break. */
+    return workedSinceRest > 0 && workedSinceRest < minWork;
+  }
+
+  async function apply(status: DutyStatus) {
+    setFailure(null);
+    try {
+      await changeStatus(status);
+    } catch {
+      setFailure(t.changeFailed);
+    }
+  }
 
   async function pick(status: DutyStatus) {
     if (status === activeStatus) return;
@@ -223,12 +261,12 @@ export function DutyHomeScreen({ navigation }: Props) {
       return;
     }
 
-    setFailure(null);
-    try {
-      await changeStatus(status);
-    } catch {
-      setFailure(t.changeFailed);
+    if (breakIsEarly(status)) {
+      setEarlyBreak(status);
+      return;
     }
+
+    await apply(status);
   }
 
   async function handleCertify() {
@@ -454,17 +492,30 @@ export function DutyHomeScreen({ navigation }: Props) {
           </TouchableOpacity>
         )}
 
-        {recap && (
-          <View style={styles.recap}>
-            <HosRecap recap={recap} />
-          </View>
-        )}
+        {/*
+          The day picker governs both the clocks and the graph, so it sits
+          above them.
 
-        <View style={styles.logCard}>
+          It used to sit between the two, from when the clocks were today-only
+          and it really did belong to the graph alone. Now that paging back
+          changes the clocks as well, having it underneath them read as though
+          it did not — and a second picker for the strip would have been two
+          controls for one choice, which is worse than a misplaced one.
+        */}
+        <View style={styles.dayCard}>
           <DayPicker embedded date={viewDate} earliest={earliestDate} onChange={setViewDate} />
           {viewKey === earliestDate && (
             <Text style={[fontStyle.fontSizeExtraSmall, styles.oldest]}>{t.oldestLoaded}</Text>
           )}
+        </View>
+
+        {recap && (
+          <View style={styles.recap}>
+            <HosRecap recap={recap} limits={profile?.limits ?? null} past={!isToday} />
+          </View>
+        )}
+
+        <View style={styles.logCard}>
           <View style={styles.graph}>
             <DutyGraph segments={segments} />
           </View>
@@ -543,6 +594,28 @@ export function DutyHomeScreen({ navigation }: Props) {
           </>
         )}
       </ScrollView>
+
+      <ConfirmModal
+        visible={earlyBreak !== null}
+        title={modal.earlyBreak.title}
+        message={
+          minWork === null
+            ? ''
+            : modal.earlyBreak.message(
+                formatClock(minWork),
+                formatClock(Math.max(0, minWork - workedSinceRest)),
+              )
+        }
+        confirmLabel={modal.earlyBreak.confirm}
+        icon={icons.alert}
+        tone="danger"
+        onConfirm={() => {
+          const status = earlyBreak;
+          setEarlyBreak(null);
+          if (status) void apply(status);
+        }}
+        onCancel={() => setEarlyBreak(null)}
+      />
 
       <ConfirmModal
         visible={confirming}
@@ -681,11 +754,12 @@ const styles = StyleSheet.create({
   trainingTitle: { color: textDark },
   trainingHint: { color: textMuted, marginTop: spacings.xxsmall },
 
-  recap: { marginTop: spacings.large },
-  logCard: {
+  /* The picker's own card, matching the two it now sits above. */
+  dayCard: {
     backgroundColor: cardBg,
     borderRadius: 20,
-    padding: spacings.xxLarge,
+    paddingHorizontal: spacings.xxLarge,
+    paddingVertical: spacings.large,
     marginTop: spacings.xxLarge,
     shadowColor,
     shadowOpacity: 0.08,
@@ -693,12 +767,22 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 8 },
     elevation: 4,
   },
-  graph: {
-    marginTop: spacings.xLarge,
-    paddingTop: spacings.xLarge,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: borderColor,
+
+  recap: { marginTop: spacings.large },
+  logCard: {
+    backgroundColor: cardBg,
+    borderRadius: 20,
+    padding: spacings.xxLarge,
+    marginTop: spacings.large,
+    shadowColor,
+    shadowOpacity: 0.08,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 4,
   },
+  /* No top divider any more: the picker it used to separate from now lives in
+     its own card above, so a rule here would cut off nothing. */
+  graph: {},
   oldest: { color: textMuted, marginTop: spacings.normal, textAlign: 'center' },
   logLink: {
     marginTop: spacings.xLarge,

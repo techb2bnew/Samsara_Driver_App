@@ -27,6 +27,20 @@ import type { DriverProfile } from '../supabase/api';
 
 const ONBOARDED_KEY = 'samsara.driver.onboarded.v2';
 
+/**
+ * The last profile that loaded, kept so a failed read is not a broken app.
+ *
+ * The profile is the office's answer to "who is this driver" — their depot,
+ * their timezone, their fleet's hours rule book. It changes about as often as
+ * somebody changes job, and the app cannot draw a single screen without it.
+ *
+ * So it is cached. A phone in a yard with no signal opens to the app it opened
+ * to yesterday, rather than to a screen explaining that the request failed —
+ * which is the same thing every other part of this app does with a stale read,
+ * and the only reason it did not here was that nothing kept the last answer.
+ */
+const PROFILE_KEY = 'samsara.driver.profile.v1';
+
 type State =
   | { status: 'loading' }
   | { status: 'signedOut' }
@@ -66,12 +80,51 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
     try {
       const profile = await api.loadProfile();
-      setState(profile ? { status: 'signedIn', profile } : { status: 'notADriver' });
+      if (profile) {
+        setState({ status: 'signedIn', profile });
+        AsyncStorage.setItem(PROFILE_KEY, JSON.stringify(profile)).catch(() => {});
+      } else {
+        /*
+         * A real answer: this account has no driver row. Cached anything is
+         * wrong now, so it goes — otherwise an office login that once opened
+         * the app would keep opening it.
+         */
+        AsyncStorage.removeItem(PROFILE_KEY).catch(() => {});
+        setState({ status: 'notADriver' });
+      }
     } catch {
-      // The session is real but the profile read failed — almost always no
-      // network on launch. Treated as signed in with no profile rather than
-      // signed out, because signing the driver out would lose queued work.
-      setState({ status: 'notADriver' });
+      /*
+       * The read failed — almost always no signal. The session is still real,
+       * so the driver stays signed in on the last profile that loaded and the
+       * app opens normally.
+       *
+       * There is no third screen for this. An app that works and a sign-in
+       * screen are the two outcomes; "your account is not set up as a driver,
+       * ask your fleet office" was a third, and it was wrong twice over — the
+       * account was fine, and the office could do nothing about a dropped
+       * request.
+       *
+       * With nothing cached there is nothing to open the app with, and
+       * sign-in is the honest place to land: signing in fetches the profile as
+       * part of doing so. That only happens on a phone that has never
+       * completed a load, which took a network to reach in the first place.
+       */
+      let cached: string | null = null;
+      try {
+        cached = await AsyncStorage.getItem(PROFILE_KEY);
+      } catch {
+        // Storage unavailable. Treated as no cache.
+      }
+
+      if (cached) {
+        try {
+          setState({ status: 'signedIn', profile: JSON.parse(cached) as DriverProfile });
+          return;
+        } catch {
+          // Unreadable, from an older shape. Fall through to sign-in.
+        }
+      }
+      setState({ status: 'signedOut' });
     }
   }, []);
 
@@ -134,6 +187,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       },
       signOut: async () => {
         await api.signOut();
+        /* The next person to hold this phone is not this driver. */
+        AsyncStorage.removeItem(PROFILE_KEY).catch(() => {});
         setState({ status: 'signedOut' });
       },
       refreshProfile: resolve,

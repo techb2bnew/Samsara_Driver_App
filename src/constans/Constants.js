@@ -10,6 +10,75 @@
 
 export const APP_NAME = 'Samsara Driver';
 
+/* ==========================================================================
+   Switches
+   ==========================================================================
+   Not words, but they live here rather than in a config file of their own —
+   this is the file everybody already opens to change how the app reads, and a
+   switch nobody can find is a switch nobody uses.
+   ========================================================================== */
+
+/**
+ * Whether the app checks where the driver is.
+ *
+ * Turning this off turns off ALL of it: no GPS fix is taken, the distance to a
+ * stop is never measured, "I have arrived" is never blocked or questioned, and
+ * nothing about position is shown or stored. An arrival is just an arrival, at
+ * the time the driver tapped.
+ *
+ * One flag rather than a scatter of conditions, because a half-off location
+ * feature is the worst of the three states: a driver told their position
+ * "could not be checked" when nothing tried to check it will reasonably
+ * conclude the app is broken.
+ *
+ * On, a fix is taken when a stop opens, and the arrival button is disabled
+ * while that is in flight or when the driver is further away than
+ * ARRIVAL_RADIUS_M. A fix that FAILS never blocks anything — not knowing where
+ * somebody is is not the same as knowing they are in the wrong place, and
+ * treating it the same would strand a driver parked under a steel roof.
+ */
+export const LOCATION_CHECKS = true;
+
+/**
+ * Whether being too far from a stop STOPS a driver marking it arrived.
+ *
+ * Separate from LOCATION_CHECKS, and the separation is the point. With this
+ * off the app still takes a fix, still records where the driver was, and still
+ * shows the office whether an arrival was verified — it simply never refuses.
+ * A driver can mark any stop from anywhere; the record just says how far away
+ * they were when they did.
+ *
+ * Off by default because refusing is the part that goes wrong in the real
+ * world: a warehouse whose pin is on the office two streets from the gate, a
+ * yard under a steel roof, a stop the dispatcher placed by postcode. The
+ * position is worth recording in all of those. Refusing on it is not.
+ */
+export const ARRIVAL_GEOFENCE = false;
+
+/**
+ * How close a driver has to be to a stop to mark themselves arrived.
+ *
+ * A kilometre: wide enough for a large yard or a warehouse estate where the
+ * gate and the bay are far apart, tight enough that it still means something.
+ * Ignored entirely when ARRIVAL_GEOFENCE is off.
+ */
+export const ARRIVAL_RADIUS_M = 1000;
+
+/**
+ * Whether stops have to be marked arrived in the order they were planned.
+ *
+ * With location checks off, this is what keeps a route honest: a driver can
+ * mark themselves arrived from anywhere, so nothing else stops them marking
+ * the last drop of the day at breakfast. In order, each arrival still means
+ * something — the office reads these times to plan the rest of the day.
+ *
+ * It is not a dead end when a stop has to be skipped. The screen names the
+ * stop that comes first and offers to open it, and marking that one is a
+ * single tap — so a driver whose first customer was closed is never stuck,
+ * they just record what happened in the order it happened.
+ */
+export const STOPS_IN_ORDER = true;
+
 export const splash = {
   tagline: 'Hours, route and inspections — in the cab.',
 };
@@ -26,7 +95,6 @@ export const common = {
   done: 'Done',
   loading: 'Loading…',
   offline: 'No connection',
-  offlineHint: 'Your work is saved on this phone and will sync when you are back online.',
   somethingWrong: 'Something went wrong',
   noNetwork: 'Check your connection and try again.',
   dash: '—',
@@ -180,6 +248,24 @@ export const duty = {
   longestBreak: 'Longest break',
   recap: {
     hoursLeft: 'Hours left',
+    /* The same figures on a day that has finished. */
+    hoursLeftPast: 'Left at end of day',
+    /* Past the limit the clock counts up, so the sign has to say so. */
+    overBy: (clock) => `+${clock}`,
+    /*
+      Under each ring, so the ring means something.
+      A fraction with no scale is a decoration: "9:50" leaves the driver to
+      guess whether that is most of the day or the end of it, and the filled
+      arc has nothing to be a fraction OF.
+    */
+    ofTotal: (total) => `of ${total}`,
+    /*
+      Rest is shown as what is still OWED, so every ring on the strip means
+      the same thing: what is left of it. A ring that filled up instead would
+      read backwards from the other five.
+    */
+    rest: 'Rest',
+    load: 'Load',
     onDuty: 'On Duty',
     driving: 'Driving',
     breakIn: 'Break',
@@ -322,6 +408,12 @@ export const dayLog = {
 };
 
 export const stopDetail = {
+  /* Named, not just refused: a disabled button with no reason is the thing a
+     driver rings the office about. */
+  outOfOrderTitle: 'Earlier stop first',
+  outOfOrder: (name) => `Mark ${name} arrived before this one.`,
+  openEarlier: 'Open that stop',
+
   sequence: (n) => `Stop ${n}`,
   address: 'Address',
   window: 'Time window',
@@ -338,6 +430,9 @@ export const stopDetail = {
   checking: 'Checking where you are…',
   tooFar: (away) => `You are ${away} from this stop. Get closer to mark it arrived.`,
   closeEnough: (away) => `You are ${away} away.`,
+  /* With the geofence off, distance is information rather than a verdict —
+     so it is stated, not judged. */
+  distanceOnly: (away) => `You are ${away} from this stop. This will be recorded.`,
   // Not a refusal. A yard between two warehouses has no signal, and a driver
   // standing at the right gate still has to be able to work.
   noFix: 'Your position could not be checked, so this will be recorded as unverified.',
@@ -522,14 +617,43 @@ export const violations = {
   empty: 'No violations',
   emptyHint: 'Nothing has broken the hours rules.',
   noRegulator: 'Your office has not chosen a rule book, so nothing can be checked.',
-  limit: 'Limit',
-  actual: 'Recorded',
+  /* A count at the top, so the driver knows the size of it before scrolling. */
+  summary: (n, days) =>
+    n === 1 ? `1 violation in the last ${days} days` : `${n} violations in the last ${days} days`,
+  limit: 'Should have been',
+  actual: 'You recorded',
   over: 'Over by',
+  at: (time) => `at ${time}`,
+  /* Which kind of rule, as a badge rather than words tacked onto the title —
+     an inspector's question is the first thing a driver has to answer. */
+  legal: 'Legal limit',
+  fleet: 'Fleet rule',
   kind: {
     daily_driving: 'Drove too long in a day',
     duty_window: 'On-duty window exceeded',
     missing_break: 'Drove too long without a break',
     cycle: 'Cycle limit exceeded',
+    daily_rest: 'Drove without enough rest first',
+    break_too_early: 'Break taken too early',
+    break_too_long: 'Break ran too long',
+    on_duty_too_long: 'Too long on duty, not driving',
+  },
+  /*
+    What the rule is, in one line.
+
+    The three figures below say what happened; this says what the rule was for.
+    A driver who has never had a cycle violation cannot work out from
+    "56:00 on duty over 7 days" what they are supposed to do differently.
+  */
+  detail: {
+    daily_driving: 'There is a limit on how long you can drive in one day.',
+    duty_window: 'Your shift ran longer than the window allows, counting breaks in the middle.',
+    missing_break: 'A break is required once you have driven this long.',
+    cycle: 'There is a limit on your on-duty hours added up across several days.',
+    daily_rest: 'You need this many hours off in a row before driving again.',
+    break_too_early: 'Your fleet asks you to work this long before stopping for a break.',
+    break_too_long: 'Your fleet caps how long one break can run. Your end-of-shift rest does not count.',
+    on_duty_too_long: 'Your fleet caps loading, unloading and waiting time across the day.',
   },
 };
 
@@ -539,6 +663,22 @@ export const modal = {
     message:
       'Anything not yet synced stays on this phone. It will send the next time you sign in.',
     confirm: 'Sign out',
+  },
+
+  /*
+    The fleet's own "work before a break" rule, at the moment the driver taps.
+
+    A warning and not a block. The driver is the one who knows whether they
+    have to stop — unwell, or sent out of a yard — and an app that refuses to
+    record what happened produces a false log, which is worse than a breach
+    written down honestly. So it says what the rule is, records what they
+    choose, and the violation shows up on their log.
+  */
+  earlyBreak: {
+    title: 'Break not due yet',
+    message: (required, short) =>
+      `Your fleet asks for ${required} of work before a break, and you are ${short} short. You can stop anyway — it will be recorded, and it will show on your log as a fleet-rule breach.`,
+    confirm: 'Stop anyway',
   },
 
   deleteAccount: {

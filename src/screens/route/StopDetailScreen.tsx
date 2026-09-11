@@ -1,5 +1,12 @@
-import React, { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-native';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  ActivityIndicator,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import {
   AppIcon,
@@ -27,7 +34,16 @@ import {
   textFaint,
   textMuted,
 } from '../../constans/Color';
-import { common, paperwork, routeScreen, stopDetail as t } from '../../constans/Constants';
+import {
+  ARRIVAL_GEOFENCE,
+  ARRIVAL_RADIUS_M,
+  LOCATION_CHECKS,
+  STOPS_IN_ORDER,
+  common,
+  paperwork,
+  routeScreen,
+  stopDetail as t,
+} from '../../constans/Constants';
 import { heightPercentageToDP as hp } from '../../utils';
 import * as api from '../../supabase/api';
 import { formatTime } from '../../helpers/duty';
@@ -64,7 +80,17 @@ export function StopDetailScreen({ route: nav, navigation }: Props) {
   const [failure, setFailure] = useState<string | null>(null);
 
   const stop = route?.stops.find(s => s.id === stopId) ?? null;
-  const hasLocation = stop?.latitude !== null && stop?.longitude !== null;
+  /*
+   * Whether this screen does anything about position at all.
+   *
+   * Two things have to be true: the app's location checks are switched on, and
+   * this stop actually has coordinates to measure against. Folding both into
+   * one name means every surface below — the banner, the retry, the blocked
+   * button, the wording in the confirmation — disappears together. A location
+   * feature that is half off is worse than either state.
+   */
+  const hasLocation =
+    LOCATION_CHECKS && stop?.latitude !== null && stop?.longitude !== null;
 
   /*
     How far the driver is from this stop.
@@ -103,19 +129,49 @@ export function StopDetailScreen({ route: nav, navigation }: Props) {
     a thumb on a screen waiting.
   */
   useEffect(() => {
-    if (stop?.arrivedAt) return;
+    if (stop?.arrivedAt || !hasLocation) return;
     takeFix().catch(() => setFixState('unavailable'));
-  }, [takeFix, stop?.arrivedAt]);
+  }, [takeFix, stop?.arrivedAt, hasLocation]);
 
-  /** A kilometre. Wide enough for a big yard, tight enough to mean something. */
-  const ARRIVAL_RADIUS_M = 1000;
   const tooFar = fixState === 'ok' && where !== null && where.distanceM > ARRIVAL_RADIUS_M;
   /*
     Blocked only when we KNOW they are far. Not knowing is not the same as
     being in the wrong place, and treating it the same would strand a driver
     for standing under a steel roof.
   */
-  const blocked = hasLocation && (fixState === 'checking' || tooFar);
+  /*
+   * The stop that has to be marked before this one.
+   *
+   * With location checks off a driver can mark themselves arrived from
+   * anywhere, and nothing else would stop them marking the last drop of the
+   * day at breakfast. Order is what keeps the times meaning something — the
+   * office plans the rest of the day from them.
+   *
+   * The EARLIEST unmarked stop, not simply the one before: a driver three
+   * stops ahead should be sent back to the first one they missed rather than
+   * walked backwards one screen at a time.
+   */
+  const earlier = useMemo(() => {
+    if (!STOPS_IN_ORDER || !stop || stop.arrivedAt) return null;
+    return (
+      (route?.stops ?? [])
+        .filter(s => s.sequence < stop.sequence && !s.arrivedAt)
+        .sort((a, b) => a.sequence - b.sequence)[0] ?? null
+    );
+  }, [route?.stops, stop]);
+
+  /*
+   * Blocked only by the order rule and, if the fleet wants it, the geofence.
+   *
+   * The geofence is its own switch because the two halves of "location" are
+   * worth different things: recording where a driver was is useful always,
+   * refusing them for it is useful rarely. With ARRIVAL_GEOFENCE off the fix
+   * is still taken and still stored — the arrival simply is not refused, and
+   * the distance is stated rather than judged.
+   */
+  const blocked =
+    earlier !== null ||
+    (ARRIVAL_GEOFENCE && hasLocation && (fixState === 'checking' || tooFar));
 
   async function markArrived() {
     if (!stop) return;
@@ -194,11 +250,15 @@ export function StopDetailScreen({ route: nav, navigation }: Props) {
               {/* Whether it was checked, not just when. An arrival with no
                   position behind it is a different record, and the driver
                   should see the same thing the office does. */}
-              {`${routeScreen.arrivedAt(formatTime(stop.arrivedAt!))} · ${
-                stop.arrivedDistanceM === null
-                  ? t.unverified
-                  : t.verified(formatDistance(stop.arrivedDistanceM))
-              }`}
+              {/* No "unverified" when nothing was meant to verify it —
+                  that would label every arrival in the fleet as suspect. */}
+              {!LOCATION_CHECKS
+                ? routeScreen.arrivedAt(formatTime(stop.arrivedAt!))
+                : `${routeScreen.arrivedAt(formatTime(stop.arrivedAt!))} · ${
+                    stop.arrivedDistanceM === null
+                      ? t.unverified
+                      : t.verified(formatDistance(stop.arrivedDistanceM))
+                  }`}
             </Text>
           </View>
         )}
@@ -280,9 +340,11 @@ export function StopDetailScreen({ route: nav, navigation }: Props) {
               {fixState === 'checking'
                 ? t.checking
                 : fixState === 'ok' && where
-                  ? tooFar
-                    ? t.tooFar(formatDistance(where.distanceM))
-                    : t.closeEnough(formatDistance(where.distanceM))
+                  ? !ARRIVAL_GEOFENCE
+                    ? t.distanceOnly(formatDistance(where.distanceM))
+                    : tooFar
+                      ? t.tooFar(formatDistance(where.distanceM))
+                      : t.closeEnough(formatDistance(where.distanceM))
                   : fixState === 'denied'
                     ? t.denied
                     : t.noFix}
@@ -340,6 +402,44 @@ export function StopDetailScreen({ route: nav, navigation }: Props) {
           }
         />
 
+        {/*
+          Which stop comes first, and a way straight to it.
+
+          A disabled button with no reason beside it is the thing a driver
+          rings the office about. Naming the stop turns a refusal into an
+          instruction, and the link means acting on it is one tap rather than
+          three.
+        */}
+        {!stop.arrivedAt && earlier && (
+          <View style={styles.orderNotice}>
+            <View style={[BaseStyle.flexDirectionRow, BaseStyle.alignItemsCenter]}>
+              <AppIcon name={icons.alert} size={17} color={warnColor} />
+              <Text
+                style={[
+                  fontStyle.fontSizeSmall2x,
+                  fontStyle.fontWeightMedium,
+                  styles.orderTitle,
+                ]}>
+                {t.outOfOrderTitle}
+              </Text>
+            </View>
+            <Text style={[fontStyle.fontSizeSmall2x, styles.orderText]}>
+              {t.outOfOrder(earlier.name)}
+            </Text>
+            <TouchableOpacity
+              onPress={() => navigation.replace('StopDetail', { stopId: earlier.id })}>
+              <Text
+                style={[
+                  fontStyle.fontSizeSmall2x,
+                  fontStyle.fontWeightMedium,
+                  styles.orderLink,
+                ]}>
+                {t.openEarlier}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
         {!stop.arrivedAt && (
           <CustomButton
             title={t.markArrived}
@@ -355,9 +455,11 @@ export function StopDetailScreen({ route: nav, navigation }: Props) {
         visible={confirming}
         title={t.arrivedConfirm}
         message={
-          where
-            ? `${t.arrivedHint} ${t.verified(formatDistance(where.distanceM))}`
-            : `${t.arrivedHint} ${t.unverified}`
+          !LOCATION_CHECKS
+            ? t.arrivedHint
+            : where
+              ? `${t.arrivedHint} ${t.verified(formatDistance(where.distanceM))}`
+              : `${t.arrivedHint} ${t.unverified}`
         }
         confirmLabel={t.markArrived}
         icon={icons.pin}
@@ -433,5 +535,17 @@ const styles = StyleSheet.create({
     marginTop: spacings.large,
   },
   errorText: { color: dangerColor, marginLeft: spacings.normalx, flex: 1 },
+  /* The order notice, in the same warning tones as the location banner it
+     effectively replaces. */
+  orderNotice: {
+    backgroundColor: warnSoft,
+    borderRadius: 14,
+    padding: spacings.large,
+    marginTop: spacings.xxLarge,
+  },
+  orderTitle: { color: warnColor, marginLeft: spacings.normalx },
+  orderText: { color: textBody, marginTop: spacings.small, lineHeight: hp(2.3) },
+  orderLink: { color: accentColor, marginTop: spacings.normal },
+
   submit: { marginTop: spacings.xxLarge },
 });

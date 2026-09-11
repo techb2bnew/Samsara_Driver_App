@@ -16,7 +16,7 @@ import {
 } from '../../constans/Color';
 import { violations as t } from '../../constans/Constants';
 import { heightPercentageToDP as hp } from '../../utils';
-import { isoDate, segmentsForDay } from '../../helpers/duty';
+import { formatClock, isoDate, segmentsForDay } from '../../helpers/duty';
 
 import { violationsForDay, type Violation } from '../../helpers/violations';
 import { useNow } from '../../hooks/useNow';
@@ -66,11 +66,44 @@ export function MyViolationsScreen() {
         window.push(segmentsForDay(events, earlier, now));
       }
 
-      out.push(...violationsForDay(book, isoDate(day), today, window));
+      /*
+       * The day before, for the daily-rest check. A rest that began in a day
+       * this phone never loaded would look like no rest at all, so the oldest
+       * day gets [] and the check stands down rather than judging it.
+       */
+      const before = new Date(day);
+      before.setDate(day.getDate() - 1);
+      const yesterday =
+        isoDate(before) >= earliestDate ? segmentsForDay(events, before, now) : [];
+
+      out.push(...violationsForDay(book, isoDate(day), today, window, yesterday));
       cursor.setDate(cursor.getDate() - 1);
     }
     return out;
   }, [book, events, earliestDate, now]);
+
+  /*
+   * Grouped by day, newest first.
+   *
+   * A driver who overran on Tuesday usually broke two rules at once — the
+   * driving limit and the window — and a flat list printed Tuesday's date on
+   * each of them as though they were separate days. One heading says it once.
+   */
+  const byDay = useMemo(() => {
+    const days = new Map<string, Violation[]>();
+    for (const v of found) {
+      const list = days.get(v.date);
+      if (list) list.push(v);
+      else days.set(v.date, [v]);
+    }
+    return [...days.entries()].sort((a, b) => b[0].localeCompare(a[0]));
+  }, [found]);
+
+  /* How far back the log on this phone reaches, for the summary line. */
+  const windowDays = useMemo(() => {
+    const from = new Date(`${earliestDate}T00:00:00`);
+    return Math.max(1, Math.round((now.getTime() - from.getTime()) / 86_400_000) + 1);
+  }, [earliestDate, now]);
 
   function pretty(iso: string): string {
     return new Date(`${iso}T00:00:00`).toLocaleDateString(undefined, {
@@ -97,32 +130,92 @@ export function MyViolationsScreen() {
             <EmptyState icon={icons.checkCircle} title={t.empty} hint={t.emptyHint} />
           </View>
         ) : (
-          found.map((v) => (
-            <Card key={v.id} style={styles.card}>
-              <View style={[BaseStyle.flexDirectionRow, BaseStyle.alignItemsCenter]}>
-                <View style={[BaseStyle.alignJustifyCenter, styles.badge]}>
-                  <AppIcon name={icons.alert} size={18} color={dangerColor} />
-                </View>
-                <View style={BaseStyle.flex}>
-                  <Text
-                    style={[
-                      fontStyle.fontSizeNormal1x,
-                      fontStyle.fontWeightMedium,
-                      styles.title,
-                    ]}>
-                    {t.kind[v.kind]}
-                  </Text>
-                  <Text style={[fontStyle.fontSizeSmall1x, styles.date]}>{pretty(v.date)}</Text>
-                </View>
-              </View>
+          <>
+            <Text style={[fontStyle.fontSizeSmall2x, fontStyle.fontWeightMedium, styles.count]}>
+              {t.summary(found.length, windowDays)}
+            </Text>
 
-              <View style={styles.rows}>
-                <Row label={t.limit} value={v.limit} />
-                <Row label={t.actual} value={v.actual} />
-                <Row label={t.over} value={v.overage} strong />
+            {byDay.map(([date, ofDay]) => (
+              <View key={date}>
+                <Text
+                  style={[
+                    fontStyle.fontSizeSmall1x,
+                    fontStyle.fontWeightMedium,
+                    styles.dayHeading,
+                  ]}>
+                  {pretty(date).toUpperCase()}
+                </Text>
+
+                {ofDay.map(v => (
+                  <Card key={v.id} style={styles.card}>
+                    <View style={[BaseStyle.flexDirectionRow, BaseStyle.alignItemsCenter]}>
+                      <View
+                        style={[
+                          BaseStyle.alignJustifyCenter,
+                          styles.badge,
+                          !v.legal && styles.badgeFleet,
+                        ]}>
+                        <AppIcon
+                          name={icons.alert}
+                          size={18}
+                          color={v.legal ? dangerColor : warnColor}
+                        />
+                      </View>
+                      <View style={BaseStyle.flex}>
+                        <Text
+                          style={[
+                            fontStyle.fontSizeNormal1x,
+                            fontStyle.fontWeightMedium,
+                            styles.title,
+                          ]}>
+                          {t.kind[v.kind]}
+                        </Text>
+
+                        {/*
+                          Which kind of rule, and when — the two questions a
+                          driver is asked about a breach and could not answer
+                          from this card before.
+                        */}
+                        <View
+                          style={[
+                            BaseStyle.flexDirectionRow,
+                            BaseStyle.alignItemsCenter,
+                            styles.metaRow,
+                          ]}>
+                          <Text
+                            style={[
+                              fontStyle.fontSizeExtraSmall,
+                              fontStyle.fontWeightMedium,
+                              styles.tag,
+                              v.legal ? styles.tagLegal : styles.tagFleet,
+                            ]}>
+                            {v.legal ? t.legal : t.fleet}
+                          </Text>
+                          {v.at !== null && (
+                            <Text style={[fontStyle.fontSizeSmall1x, styles.at]}>
+                              {t.at(formatClock(v.at))}
+                            </Text>
+                          )}
+                        </View>
+                      </View>
+                    </View>
+
+                    {/* What the rule is for. The figures below say what
+                        happened; this says what it was meant to prevent. */}
+                    <Text style={[fontStyle.fontSizeSmall2x, styles.detail]}>
+                      {t.detail[v.kind]}
+                    </Text>
+
+                    <View style={styles.rows}>
+                      <Row label={t.limit} value={v.limit} />
+                      <Row label={t.actual} value={v.actual} />
+                      <Row label={t.over} value={v.overage} strong />
+                    </View>
+                  </Card>
+                ))}
               </View>
-            </Card>
-          ))
+            ))}
+          </>
         )}
       </ScrollView>
     </View>
@@ -160,6 +253,12 @@ const styles = StyleSheet.create({
   noticeText: { color: warnColor, marginLeft: spacings.normalx, flex: 1, lineHeight: hp(2.3) },
 
   empty: { marginTop: spacings.xxLarge },
+  count: { color: textDark, marginTop: spacings.large },
+  dayHeading: {
+    color: textFaint,
+    letterSpacing: 1,
+    marginTop: spacings.xxLarge,
+  },
   card: { marginTop: spacings.large },
   badge: {
     width: 38,
@@ -168,8 +267,19 @@ const styles = StyleSheet.create({
     backgroundColor: dangerSoft,
     marginRight: spacings.large,
   },
+  badgeFleet: { backgroundColor: warnSoft },
   title: { color: textDark },
-  date: { color: textFaint, marginTop: spacings.xxsmall },
+  metaRow: { marginTop: spacings.xsmall },
+  tag: {
+    borderRadius: 6,
+    paddingHorizontal: spacings.small,
+    paddingVertical: spacings.xxsmall,
+    overflow: 'hidden',
+  },
+  tagLegal: { backgroundColor: dangerSoft, color: dangerColor },
+  tagFleet: { backgroundColor: warnSoft, color: warnColor },
+  at: { color: textFaint, marginLeft: spacings.normal },
+  detail: { color: textMuted, marginTop: spacings.large, lineHeight: hp(2.3) },
 
   rows: { marginTop: spacings.large },
   row: { paddingVertical: spacings.small },

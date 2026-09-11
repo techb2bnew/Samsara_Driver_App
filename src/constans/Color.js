@@ -58,6 +58,15 @@ export const cardBgSoft = '#F2F4F7';
 // Lines. `borderColor` for dividers, `borderStrong` for input outlines that
 // have to be findable in sunlight.
 export const borderColor = '#E7E9EE';
+/*
+ * The unfilled part of a progress ring.
+ *
+ * Darker than borderColor on purpose. At border grey on a white card the used
+ * portion was almost invisible, so a ring read as a black arc floating in
+ * space rather than as a proportion of something — which is the one thing a
+ * ring is for.
+ */
+export const ringTrack = '#D5DAE3';
 export const borderStrong = '#D3D7DF';
 
 // Text. Four steps is enough; a fifth one is always too close to its neighbour.

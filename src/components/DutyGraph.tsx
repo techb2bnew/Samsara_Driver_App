@@ -27,7 +27,7 @@ import {
   BANDS,
   MINUTES_IN_DAY,
   formatClock,
-  formatHours,
+  formatClockPadded,
   totals,
   type Band,
   type Segment,
@@ -197,7 +197,7 @@ export function DutyGraph({ segments }: { segments: Segment[] }) {
                 fontStyle.fontWeightMedium,
                 styles.bandTotal,
               ]}>
-              {formatHours(byBand[band])}
+              {formatClockPadded(byBand[band])}
             </Text>
           </View>
         ))}
@@ -273,7 +273,7 @@ export function DutyGraph({ segments }: { segments: Segment[] }) {
                         top: row * ROW + (row < 2 ? ROW / 2 + 1 : 2),
                       },
                     ]}>
-                    {formatHours(width)}
+                    {formatClock(width)}
                   </Text>
                 )}
               </React.Fragment>

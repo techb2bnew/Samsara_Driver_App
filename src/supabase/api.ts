@@ -120,7 +120,7 @@ export async function loadProfile(): Promise<DriverProfile | null> {
     const book = await supabase
       .from('hos_rule_books')
       .select(
-        'name, daily_driving_minutes, duty_window_minutes, driving_before_break_minutes, break_length_minutes, cycle_minutes, cycle_days',
+        'name, daily_driving_minutes, duty_window_minutes, driving_before_break_minutes, break_length_minutes, cycle_minutes, cycle_days, daily_rest_minutes, min_work_before_break_minutes, max_break_minutes, max_on_duty_minutes',
       )
       .eq('id', org.data.hos_rule_book_id)
       .maybeSingle();

@@ -1178,9 +1178,13 @@ export type Database = {
           cycle_days: number
           cycle_minutes: number
           daily_driving_minutes: number
+          daily_rest_minutes: number | null
           driving_before_break_minutes: number
           duty_window_minutes: number | null
           id: string
+          max_break_minutes: number | null
+          max_on_duty_minutes: number | null
+          min_work_before_break_minutes: number | null
           name: string
           org_id: string
           updated_at: string
@@ -1191,9 +1195,13 @@ export type Database = {
           cycle_days: number
           cycle_minutes: number
           daily_driving_minutes: number
+          daily_rest_minutes?: number | null
           driving_before_break_minutes: number
           duty_window_minutes?: number | null
           id?: string
+          max_break_minutes?: number | null
+          max_on_duty_minutes?: number | null
+          min_work_before_break_minutes?: number | null
           name: string
           org_id: string
           updated_at?: string
@@ -1204,9 +1212,13 @@ export type Database = {
           cycle_days?: number
           cycle_minutes?: number
           daily_driving_minutes?: number
+          daily_rest_minutes?: number | null
           driving_before_break_minutes?: number
           duty_window_minutes?: number | null
           id?: string
+          max_break_minutes?: number | null
+          max_on_duty_minutes?: number | null
+          min_work_before_break_minutes?: number | null
           name?: string
           org_id?: string
           updated_at?: string
