@@ -1,4 +1,4 @@
-package com.samsaradriver
+package com.base2brand.samsaradriver
 
 import com.facebook.react.ReactActivity
 import com.facebook.react.ReactActivityDelegate

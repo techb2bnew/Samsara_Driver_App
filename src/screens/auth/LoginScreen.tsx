@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import {
   Animated,
   KeyboardAvoidingView,
+  Linking,
   Platform,
   Pressable,
   ScrollView,
@@ -31,8 +32,14 @@ import {
   shadowColor,
   textBody,
   textDark,
+  textFaint,
+  textMuted,
 } from '../../constans/Color';
-import { APP_NAME, auth as t } from '../../constans/Constants';
+import {
+  APP_NAME,
+  CONSOLE_URL,
+  auth as t,
+} from '../../constans/Constants';
 import { heightPercentageToDP as hp } from '../../utils';
 import { validateEmail, validatePassword } from '../../validation';
 import { useAuth } from '../../context/AuthContext';
@@ -40,7 +47,15 @@ import type { AuthStackParams } from '../../navigation/types';
 
 type Props = NativeStackScreenProps<AuthStackParams, 'Login'>;
 
-export function LoginScreen({ navigation }: Props) {
+/*
+ * `navigation` and `Pressable` went with the "Forgot password?" link below.
+ *
+ * Both come back together when it does: the link is the only thing on this
+ * screen that navigates, and the only Pressable. Leaving them imported and
+ * unused would have failed lint, which is the right complaint — an unused
+ * import is a claim that something uses it.
+ */
+export function LoginScreen(_: Props) {
   const { signIn } = useAuth();
 
   const [email, setEmail] = useState('');
@@ -176,6 +191,9 @@ export function LoginScreen({ navigation }: Props) {
                 error={errors.password}
               />
 
+              {/* Switched off with the console's: there is no mail path, so the
+                  code never arrives. Bring both back together.
+
               <Pressable
                 accessibilityRole="button"
                 disabled={busy}
@@ -190,7 +208,7 @@ export function LoginScreen({ navigation }: Props) {
                   ]}>
                   {t.signIn.forgot}
                 </Text>
-              </Pressable>
+              </Pressable> */}
 
               {Boolean(failure) && (
                 <Animated.View
@@ -224,6 +242,57 @@ export function LoginScreen({ navigation }: Props) {
                 loading={busy}
               />
             </View>
+
+            {/*
+              The policies, under the card.
+
+              Here as well as in the Me tab because this is the one screen
+              somebody sees before they have an account — a driver handed a
+              work phone, and the App Store reviewer. "It is in the listing" is
+              not an answer to either of them.
+
+              Hidden until CONSOLE_URL is set, for the same reason as in Me: a
+              privacy link that goes nowhere reads as an answer, and this is
+              exactly where somebody clicks it.
+            */}
+            {CONSOLE_URL !== '' && (
+              <View
+                style={[
+                  BaseStyle.flexDirectionRow,
+                  BaseStyle.justifyContentCenter,
+                  styles.legal,
+                ]}>
+                <Pressable
+                  accessibilityRole="link"
+                  onPress={() => {
+                    Linking.openURL(`${CONSOLE_URL}/privacy`).catch(() => {});
+                  }}>
+                  <Text style={[fontStyle.fontSizeSmall1x, styles.legalLink]}>
+                    {t.signIn.privacy}
+                  </Text>
+                </Pressable>
+                <Text style={[fontStyle.fontSizeSmall1x, styles.legalDot]}>·</Text>
+                <Pressable
+                  accessibilityRole="link"
+                  onPress={() => {
+                    Linking.openURL(`${CONSOLE_URL}/terms`).catch(() => {});
+                  }}>
+                  <Text style={[fontStyle.fontSizeSmall1x, styles.legalLink]}>
+                    {t.signIn.terms}
+                  </Text>
+                </Pressable>
+                <Text style={[fontStyle.fontSizeSmall1x, styles.legalDot]}>·</Text>
+                <Pressable
+                  accessibilityRole="link"
+                  onPress={() => {
+                    Linking.openURL(`${CONSOLE_URL}/support`).catch(() => {});
+                  }}>
+                  <Text style={[fontStyle.fontSizeSmall1x, styles.legalLink]}>
+                    {t.signIn.support}
+                  </Text>
+                </Pressable>
+              </View>
+            )}
           </ScrollView>
         </KeyboardAvoidingView>
       </SafeAreaView>
@@ -239,6 +308,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacings.xxLarge,
     paddingVertical: spacings.xxxLarge,
   },
+  legal: { marginTop: spacings.xxLarge },
+  legalLink: { color: textMuted },
+  legalDot: { color: textFaint, marginHorizontal: spacings.normal },
+
   brandBlock: { marginBottom: spacings.xxLarge },
   logo: {
     width: 52,

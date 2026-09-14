@@ -1,5 +1,11 @@
 import React, { useState } from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import {
+  Linking,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import {
@@ -22,7 +28,13 @@ import {
   textFaint,
   textMuted,
 } from '../../constans/Color';
-import { me as t, modal, notifications as n, screenTitles } from '../../constans/Constants';
+import {
+  CONSOLE_URL,
+  me as t,
+  modal,
+  notifications as n,
+  screenTitles,
+} from '../../constans/Constants';
 import { personName } from '../../helpers/names';
 import { useAuth } from '../../context/AuthContext';
 import { useShift } from '../../context/ShiftContext';
@@ -211,6 +223,47 @@ export function MeHomeScreen({ navigation }: Props) {
             last
           />
         </Card>
+
+        {/*
+          The public policies, opened in a browser.
+
+          Left out entirely until CONSOLE_URL is set. A privacy link that goes
+          nowhere is worse than no link — it reads as an answer, and it is the
+          one link somebody follows when they have already decided they do not
+          trust the app.
+        */}
+        {CONSOLE_URL !== '' && (
+          <>
+            <Text
+              style={[fontStyle.fontSizeSmall2x, fontStyle.fontWeightMedium, styles.section]}>
+              {t.legal.toUpperCase()}
+            </Text>
+            <Card padded={false}>
+              <ListRow
+                icon={icons.shield}
+                title={t.privacy}
+                onPress={() => {
+                  Linking.openURL(`${CONSOLE_URL}/privacy`).catch(() => {});
+                }}
+              />
+              <ListRow
+                icon={icons.logbook}
+                title={t.terms}
+                onPress={() => {
+                  Linking.openURL(`${CONSOLE_URL}/terms`).catch(() => {});
+                }}
+              />
+              <ListRow
+                icon={icons.bell}
+                title={t.support}
+                onPress={() => {
+                  Linking.openURL(`${CONSOLE_URL}/support`).catch(() => {});
+                }}
+                last
+              />
+            </Card>
+          </>
+        )}
 
         {/* -------------------------------------------------------- leaving */}
         <Card padded={false} style={styles.dangerCard}>

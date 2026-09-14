@@ -1,4 +1,4 @@
-package com.samsaradriver
+package com.base2brand.samsaradriver
 
 import android.app.Application
 import com.facebook.react.PackageList

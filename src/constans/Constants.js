@@ -79,6 +79,26 @@ export const ARRIVAL_RADIUS_M = 1000;
  */
 export const STOPS_IN_ORDER = true;
 
+/**
+ * Where the public policy pages live.
+ *
+ * The fleet console serves them, because it is already deployed with a domain
+ * and these have to be reachable with no account — App Store review opens the
+ * privacy policy in a browser with no login, and a policy behind a sign-in is
+ * the same as no policy.
+ *
+ * No trailing slash: every use appends a path. Left empty in a build where the
+ * console is not deployed, and both the sign-in footer and the Me tab leave
+ * their rows out rather than showing links that go nowhere — a dead privacy
+ * link is worse than no link, because it reads as an answer, and the sign-in
+ * screen is exactly where somebody clicks it.
+ */
+/* Typed as string, not as its own literal, so the empty-check at each use
+   site stays meaningful — TypeScript would otherwise narrow this to one exact
+   value and call the guard unreachable. */
+/** @type {string} */
+export const CONSOLE_URL = 'https://samsara.b2bcampus.com';
+
 export const splash = {
   tagline: 'Hours, route and inspections — in the cab.',
 };
@@ -135,6 +155,11 @@ export const auth = {
     hide: 'Hide',
     submit: 'Sign in',
     forgot: 'Forgot password?',
+    /* Under the sign-in card. The one screen somebody sees before they
+       have an account — a new driver, and the App Store reviewer. */
+    privacy: 'Privacy',
+    terms: 'Terms',
+    support: 'Support',
     emailRequired: 'Enter your email',
     emailInvalid: 'Enter a valid email address',
     passwordRequired: 'Enter your password',
@@ -455,6 +480,10 @@ export const messages = {
 export const me = {
   title: 'Me',
   noTruck: 'No truck picked yet',
+  legal: 'Policies',
+  privacy: 'Privacy policy',
+  terms: 'Terms of service',
+  support: 'Help and support',
   profile: 'My details',
   employeeNumber: 'Employee number',
   depot: 'Depot',
